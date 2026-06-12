@@ -76,11 +76,10 @@ namespace PersonalityBox.Characters
         {
             _anim = GetComponent<Animator>() ?? GetComponentInChildren<Animator>();
             _rb   = GetComponent<Rigidbody>();
-            _rb.useGravity             = false;  // 직접 Y 고정 — 물리 중력 불필요
-            _rb.constraints            = RigidbodyConstraints.FreezeRotation
-                                       | RigidbodyConstraints.FreezePositionY;
+            _rb.useGravity             = false;   // Y는 FixedUpdate에서 직접 고정
+            _rb.constraints            = RigidbodyConstraints.FreezeRotation;  // Y Position 제약 제거 (이동 방해)
             _rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
-            _rb.linearDamping          = 5f;
+            _rb.linearDamping          = 1f;      // 낮춰야 연속 이동 가능
             _rb.angularDamping         = 10f;
 
             // CapsuleCollider가 프리팹 기본값(center=0, height≤1)이면 자동 수정
@@ -145,10 +144,12 @@ namespace PersonalityBox.Characters
         void FixedUpdate()
         {
             if (_rb == null) return;
-            // FreezePositionY가 Y위치를 고정하지만, 혹시 남은 Y속도만 제거
+            // Y 속도 제거 + Y 위치 고정 (FreezePositionY 제약 없이 직접 처리)
             var v = _rb.linearVelocity;
-            if (v.y != 0f)
-                _rb.linearVelocity = new Vector3(v.x, 0f, v.z);
+            _rb.linearVelocity = new Vector3(v.x, 0f, v.z);
+            var p = _rb.position;
+            if (Mathf.Abs(p.y - _spawnY) > 0.001f)
+                _rb.position = new Vector3(p.x, _spawnY, p.z);
         }
 
         // ── Public API ───────────────────────────────────────────────────────
