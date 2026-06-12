@@ -23,7 +23,7 @@ namespace PersonalityBox.Characters
         public LayerMask hitLayer;
 
         [Header("Movement")]
-        public float moveSpeed     = 4f;
+        public float moveSpeed     = 2.5f;
         public float rotationSpeed = 15f;  // 상대 방향으로 회전하는 속도
 
         [Header("Hit Feel")]

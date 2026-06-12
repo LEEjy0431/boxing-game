@@ -366,10 +366,21 @@ public static class GameSetup
         if (f1go != null) f1go.transform.position = new Vector3(f1go.transform.position.x, floorY, 0f);
         if (f2go != null) f2go.transform.position = new Vector3(f2go.transform.position.x, floorY, 0f);
 
+        // ── 7. RingBoundary 생성/갱신 ────────────────────────────────────
+        var rb = Object.FindAnyObjectByType<RingBoundary>();
+        if (rb == null)
+        {
+            var rbGo = new GameObject("RingBoundary");
+            rb = rbGo.AddComponent<RingBoundary>();
+        }
+        rb.transform.position = new Vector3(0f, floorY, 0f);
+        rb.ringRadius = 5f;   // 링 반지름(m) — Scene에서 직접 조정 가능
+        rb.fighters = null;   // Start()에서 자동 탐색
+
         EditorSceneManager.MarkSceneDirty(
             UnityEngine.SceneManagement.SceneManager.GetActiveScene());
 
-        Debug.Log($"[Reset] ✓ 완료 — 바닥Y={floorY:F2} | Ctrl+S 저장 → Play ▶");
+        Debug.Log($"[Reset] ✓ 완료 — 바닥Y={floorY:F2} | RingBoundary 반경={rb.ringRadius}m | Ctrl+S 저장 → Play ▶");
     }
 
     // ════════════════════════════════════════════════════════════════════════

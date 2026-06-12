@@ -12,13 +12,20 @@ namespace PersonalityBox.Core
         public float ringRadius = 5f;
         public Fighter[] fighters;
 
+        void Start()
+        {
+            // Inspector에서 연결 안 됐으면 씬에서 자동 탐색
+            if (fighters == null || fighters.Length == 0)
+                fighters = FindObjectsByType<Fighter>(FindObjectsSortMode.None);
+        }
+
         void LateUpdate()
         {
+            if (fighters == null) return;
             foreach (var f in fighters)
             {
                 if (f == null) continue;
 
-                // 링 중심을 기준으로 XZ 거리 계산
                 Vector3 offset = f.transform.position - transform.position;
                 offset.y = 0f;
 
@@ -34,7 +41,6 @@ namespace PersonalityBox.Core
             }
         }
 
-        // 에디터에서 링 경계 시각화
         void OnDrawGizmos()
         {
             Gizmos.color = new Color(1f, 1f, 0f, 0.3f);
