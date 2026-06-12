@@ -23,7 +23,7 @@ namespace PersonalityBox.Characters
         public LayerMask hitLayer;
 
         [Header("Movement")]
-        public float moveSpeed     = 2.5f;
+        public float moveSpeed     = 1.5f;
         public float rotationSpeed = 15f;  // 상대 방향으로 회전하는 속도
 
         [Header("Hit Feel")]
@@ -297,8 +297,17 @@ namespace PersonalityBox.Characters
 
         void RegenerateStamina()
         {
-            if (CurrentStamina >= D.maxStamina || _isBlocking) return;
-            CurrentStamina = Mathf.Min(D.maxStamina, CurrentStamina + D.staminaRegen * Time.deltaTime);
+            // 이동 중 스태미너 소모 (초당 8)
+            if (State == FighterState.Moving)
+            {
+                ConsumeStamina(8f * Time.deltaTime);
+                return;
+            }
+
+            // 가드 중이거나 가만히 있으면 회복 (가드 시 1.5배 빠르게)
+            if (CurrentStamina >= D.maxStamina) return;
+            float regenRate = _isBlocking ? D.staminaRegen * 1.5f : D.staminaRegen;
+            CurrentStamina = Mathf.Min(D.maxStamina, CurrentStamina + regenRate * Time.deltaTime);
             OnStaminaChanged?.Invoke(CurrentStamina, D.maxStamina);
         }
 
