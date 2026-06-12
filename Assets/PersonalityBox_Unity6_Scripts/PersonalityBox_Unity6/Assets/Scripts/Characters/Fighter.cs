@@ -297,10 +297,10 @@ namespace PersonalityBox.Characters
 
         void RegenerateStamina()
         {
-            // 이동 중 스태미너 소모 (초당 8)
+            // 이동 중 스태미너 소모 (초당 15 — 약 6초에 완전 소모)
             if (State == FighterState.Moving)
             {
-                ConsumeStamina(8f * Time.deltaTime);
+                ConsumeStamina(15f * Time.deltaTime);
                 return;
             }
 
