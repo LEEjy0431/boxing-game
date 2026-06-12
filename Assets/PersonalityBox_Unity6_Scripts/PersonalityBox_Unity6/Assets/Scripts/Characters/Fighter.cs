@@ -144,14 +144,11 @@ namespace PersonalityBox.Characters
 
         void FixedUpdate()
         {
-            // Y 고정: constraints로 막았어도 혹시 모를 드리프트 완전 차단
-            if (_rb != null)
-            {
-                var v = _rb.linearVelocity;
-                if (v.y != 0f) _rb.linearVelocity = new Vector3(v.x, 0f, v.z);
-                var p = _rb.position;
-                if (p.y != _spawnY) _rb.MovePosition(new Vector3(p.x, _spawnY, p.z));
-            }
+            if (_rb == null) return;
+            // FreezePositionY가 Y위치를 고정하지만, 혹시 남은 Y속도만 제거
+            var v = _rb.linearVelocity;
+            if (v.y != 0f)
+                _rb.linearVelocity = new Vector3(v.x, 0f, v.z);
         }
 
         // ── Public API ───────────────────────────────────────────────────────

@@ -1313,11 +1313,15 @@ public static class GameSetup
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // ⑥ Animator Controller에 클립 자동 연결
-    //   FBX 클립 이름에 키워드(idle, walk, run, hit, die 등)가 포함되면 상태에 매핑
+    // ⑥ Animator Controller에 클립 자동 연결 (FBX 우선, 기존 클립 유지)
     // ════════════════════════════════════════════════════════════════════════
     [MenuItem("Tools/PersonalityBox/⑥ Auto-Wire Animations")]
-    static void AutoWireAnimations()
+    static void AutoWireAnimations() => WireAnimations(forceOverride: false);
+
+    [MenuItem("Tools/PersonalityBox/⑥-F Force Auto-Wire (기존 클립 덮어쓰기)")]
+    static void ForceAutoWireAnimations() => WireAnimations(forceOverride: true);
+
+    static void WireAnimations(bool forceOverride)
     {
         var ctrl = AssetDatabase.LoadAssetAtPath<AnimatorController>(AnimCtrlPath);
         if (ctrl == null)
@@ -1346,20 +1350,31 @@ public static class GameSetup
         Debug.Log($"[GameSetup] 클립 {allClips.Length}개 발견: " +
                   string.Join(", ", allClips.Take(8).Select(c => c.name)));
 
+        // Placeholder 폴더 경로 (FBX 클립으로 교체 대상)
+        const string placeholderDir = "Assets/Animations/Placeholder";
+
+        // FBX 클립 먼저, Placeholder 나중 (FBX 우선 정렬)
+        var fbxClips = allClips
+            .Where(c => !AssetDatabase.GetAssetPath(c).Contains("Placeholder"))
+            .ToArray();
+        var placeholderClips = allClips
+            .Where(c => AssetDatabase.GetAssetPath(c).Contains("Placeholder"))
+            .ToArray();
+
         // 상태 이름 → 클립 키워드 매핑 테이블
         var stateKeywords = new System.Collections.Generic.Dictionary<string, string[]>
         {
             { "Idle",      new[]{"idle","stand","neutral","t-pose","tpose"} },
-            { "Move",      new[]{"walk","run","move","strafe","locomotion"} },
-            { "Jab",       new[]{"jab","punch","attack","light","quick","cross"} },
+            { "Move",      new[]{"walk","walking","run","move","strafe","locomotion"} },
+            { "Jab",       new[]{"jab","punch","light","quick","cross","jab cross"} },
             { "Hook",      new[]{"hook","swing","heavy"} },
             { "Uppercut",  new[]{"upper","uppercut","rising","lift"} },
             { "Block",     new[]{"block","guard","defend"} },
             { "Dodge",     new[]{"dodge","evade","roll","step","dash"} },
-            { "Special",   new[]{"special","super","ultimate","power","hook","cross"} },
-            { "Hit",       new[]{"hit","hurt","damage","stagger","react","big hit"} },
+            { "Special",   new[]{"special","super","ultimate","power"} },
+            { "Hit",       new[]{"big hit","hit","hurt","damage","stagger","react"} },
             { "KO",        new[]{"ko","knock","death","die","fall","lose"} },
-            { "Awaken",    new[]{"awaken","power","rage","burst","awake"} },
+            { "Awaken",    new[]{"awaken","rage","burst","awake"} },
         };
 
         var sm   = ctrl.layers[0].stateMachine;
@@ -1368,11 +1383,17 @@ public static class GameSetup
         foreach (var state in sm.states)
         {
             if (!stateKeywords.TryGetValue(state.state.name, out var keywords)) continue;
-            if (state.state.motion != null) continue; // 이미 연결된 건 건드리지 않음
 
-            // 클립 이름에 키워드가 포함된 것 찾기
-            AnimationClip best = allClips.FirstOrDefault(c =>
-                keywords.Any(k => c.name.ToLower().Contains(k)));
+            // forceOverride=false: Placeholder는 교체, FBX 클립은 유지
+            bool isPlaceholder = state.state.motion != null &&
+                AssetDatabase.GetAssetPath(state.state.motion).Contains("Placeholder");
+
+            if (state.state.motion != null && !isPlaceholder && !forceOverride) continue;
+
+            // FBX 클립 우선 탐색 → 없으면 Placeholder
+            AnimationClip best =
+                fbxClips.FirstOrDefault(c => keywords.Any(k => c.name.ToLower().Contains(k)))
+             ?? placeholderClips.FirstOrDefault(c => keywords.Any(k => c.name.ToLower().Contains(k)));
 
             if (best != null)
             {
@@ -1386,9 +1407,9 @@ public static class GameSetup
         AssetDatabase.SaveAssets();
 
         if (wired == 0)
-            Debug.LogWarning("[GameSetup] 매핑된 클립 없음. ⑤ Scan으로 클립 이름 확인 후 수동 연결하세요.");
+            Debug.LogWarning("[GameSetup] 매핑된 클립 없음. ⑤ Scan으로 클립 이름 확인하세요.");
         else
-            Debug.Log($"[GameSetup] ✓ {wired}개 상태에 클립 자동 연결 완료");
+            Debug.Log($"[GameSetup] ✓ {wired}개 상태에 클립 연결 완료");
     }
 
     // ════════════════════════════════════════════════════════════════════════
