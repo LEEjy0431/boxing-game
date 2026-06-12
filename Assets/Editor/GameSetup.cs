@@ -732,6 +732,10 @@ public static class GameSetup
         fpCam.verticalAngle     = -5f;
         if (cam != null) { cam.fieldOfView = 80f; cam.nearClipPlane = 0.01f; }
 
+        // 1인칭 팔(글러브) 추가
+        if (camGo.GetComponent<FirstPersonArms>() == null)
+            camGo.AddComponent<FirstPersonArms>();
+
         // FirstPersonCamera가 LateUpdate에서 위치를 자동 갱신 — 초기값만 설정
         float camY = detectedRingY > 0.01f ? detectedRingY + 1.65f : 3.65f;
         camGo.transform.position = new Vector3(-spawnX, camY, 0f);

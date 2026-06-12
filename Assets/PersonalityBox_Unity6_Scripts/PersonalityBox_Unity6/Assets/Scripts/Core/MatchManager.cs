@@ -81,6 +81,22 @@ namespace PersonalityBox.Core
                 Debug.LogWarning("[MatchManager] 링 바닥 감지 실패 — 파이터가 Y=0에 스폰됩니다.");
             }
 
+            // RingBoundary 없으면 런타임에 자동 생성
+            var existingRB = FindAnyObjectByType<RingBoundary>();
+            if (existingRB == null)
+            {
+                var rbGo = new GameObject("RingBoundary");
+                rbGo.transform.position = new Vector3(0f, ringY > 0.01f ? ringY : 0f, 0f);
+                var rb = rbGo.AddComponent<RingBoundary>();
+                rb.ringRadius = 5f;
+                rb.fighters   = new Fighter[] { fighter1, fighter2 };
+                Debug.Log("[MatchManager] RingBoundary 자동 생성 (반경 5m)");
+            }
+            else if (existingRB.fighters == null || existingRB.fighters.Length == 0)
+            {
+                existingRB.fighters = new Fighter[] { fighter1, fighter2 };
+            }
+
             StartCoroutine(RunMatch());
         }
 
