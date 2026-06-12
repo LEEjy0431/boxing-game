@@ -45,36 +45,50 @@ namespace PersonalityBox.Characters
         // ────────────────── Player 1 ─────────────────────────────────────────
         void HandleP1()
         {
-            // 이동: WASD — 파이터 로컬 방향 기준
-            // W=상대방 쪽 전진, S=후퇴, A/D=좌우 스텝
-            float h = 0f, v = 0f;
-            if (Input.GetKey(KeyCode.A)) h = -1f;
-            if (Input.GetKey(KeyCode.D)) h =  1f;
-            if (Input.GetKey(KeyCode.W)) v =  1f;
-            if (Input.GetKey(KeyCode.S)) v = -1f;
+            // 이동: 상대방 기준 월드 방향으로 직접 계산
+            // W=상대방 쪽 전진, S=후퇴, A=왼쪽 스텝, D=오른쪽 스텝
+            Vector3 fwd  = Vector3.zero;
+            Vector3 side = Vector3.zero;
 
-            Vector3 worldMove = _fighter.transform.TransformDirection(new Vector3(h, 0f, v));
-            worldMove.y = 0f;
-            _fighter.Move(worldMove.x, worldMove.z);
+            if (_fighter.opponentTransform != null)
+            {
+                fwd = (_fighter.opponentTransform.position - _fighter.transform.position);
+                fwd.y = 0f;
+                if (fwd.sqrMagnitude > 0.001f) fwd.Normalize();
+                else fwd = _fighter.transform.forward;
+                side = new Vector3(-fwd.z, 0f, fwd.x);  // fwd의 오른쪽 수직
+            }
+            else
+            {
+                fwd  = _fighter.transform.forward;
+                side = _fighter.transform.right;
+            }
+
+            Vector3 move = Vector3.zero;
+            if (Input.GetKey(KeyCode.W)) move += fwd;
+            if (Input.GetKey(KeyCode.S)) move -= fwd;
+            if (Input.GetKey(KeyCode.D)) move += side;
+            if (Input.GetKey(KeyCode.A)) move -= side;
+            if (move.sqrMagnitude > 1f) move.Normalize();
+
+            _fighter.Move(move.x, move.z);
 
             // 가드: Q (홀드)
             if (Input.GetKeyDown(KeyCode.Q)) _fighter.StartBlock();
             if (Input.GetKeyUp(KeyCode.Q))   _fighter.StopBlock();
 
-            // 회피: Left Shift
+            // 회피: Left Shift — 현재 이동 방향으로 회피
             if (Input.GetKeyDown(KeyCode.LeftShift))
             {
-                Vector3 localDodge = new Vector3(h, 0f, v);
-                Vector3 worldDodge = _fighter.transform.TransformDirection(localDodge);
-                worldDodge.y = 0f;
-                if (worldDodge.sqrMagnitude < 0.01f)
-                    worldDodge = -_fighter.transform.forward;
-                _fighter.Dodge(worldDodge.normalized);
+                Vector3 dodgeDir = move.sqrMagnitude > 0.01f ? move : -fwd;
+                _fighter.Dodge(dodgeDir.normalized);
             }
 
             // 높이 결정: W=상단 / S=하단 / 중립=중단
-            PunchHeight height = v > 0.3f  ? PunchHeight.High
-                               : v < -0.3f ? PunchHeight.Low
+            bool wDown = Input.GetKey(KeyCode.W);
+            bool sDown = Input.GetKey(KeyCode.S);
+            PunchHeight height = wDown ? PunchHeight.High
+                               : sDown ? PunchHeight.Low
                                : PunchHeight.Mid;
 
             if (Input.GetKeyDown(KeyCode.J)) _fighter.Punch(PunchType.Jab,      height);

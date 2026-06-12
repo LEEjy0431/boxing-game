@@ -52,7 +52,8 @@ namespace PersonalityBox.Characters
         float     _dodgeCooldownTimer;
         Coroutine _attackCoroutine;
         Coroutine _hitFlashCoroutine;
-        float     _spawnY;   // 이 높이에서 절대 벗어나지 않음
+        float     _spawnY;          // Y 고정 기준
+        Vector3   _desiredVelocity; // FixedUpdate에서 적용할 속도 (Update에서 기록)
 
         static readonly int AnimMoveSpeed    = Animator.StringToHash("MoveSpeed");
         static readonly int AnimBlock        = Animator.StringToHash("IsBlocking");
@@ -144,9 +145,9 @@ namespace PersonalityBox.Characters
         void FixedUpdate()
         {
             if (_rb == null) return;
-            // Y 속도 제거 + Y 위치 고정 (FreezePositionY 제약 없이 직접 처리)
-            var v = _rb.linearVelocity;
-            _rb.linearVelocity = new Vector3(v.x, 0f, v.z);
+            // Update에서 기록한 이동 속도를 물리 타이밍에 맞춰 적용
+            _rb.linearVelocity = new Vector3(_desiredVelocity.x, 0f, _desiredVelocity.z);
+            // Y 위치 고정
             var p = _rb.position;
             if (Mathf.Abs(p.y - _spawnY) > 0.001f)
                 _rb.position = new Vector3(p.x, _spawnY, p.z);
@@ -160,10 +161,8 @@ namespace PersonalityBox.Characters
         {
             if (!CanAct()) return;
 
-            Vector3 move = new Vector3(horizontal, 0f, depth) * moveSpeed;
-            // Y속도는 중력 결과만 유지 (양수 = 위 방향이면 0으로 클램프해 떠오름 방지)
-            float safeY = Mathf.Min(_rb.linearVelocity.y, 0f);
-            _rb.linearVelocity = new Vector3(move.x, safeY, move.z);
+            // 속도는 여기서 기록만 하고, 실제 적용은 FixedUpdate에서 처리
+            _desiredVelocity = new Vector3(horizontal, 0f, depth) * moveSpeed;
 
             float magnitude = new Vector2(horizontal, depth).magnitude;
             _anim.SetFloat(AnimMoveSpeed, magnitude);
