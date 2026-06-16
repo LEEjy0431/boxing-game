@@ -36,6 +36,7 @@ namespace PersonalityBox.Characters
         public float CurrentStamina { get; private set; }
         public bool  IsAwakened     { get; private set; }
         public FighterState State   { get; private set; }
+        public PunchHeight  CurrentBlockHeight => _blockHeight;   // 현재 가드 방향 (AI 판단용)
 
         public event Action<float, float> OnHealthChanged;
         public event Action<float, float> OnStaminaChanged;
@@ -47,10 +48,11 @@ namespace PersonalityBox.Characters
         FighterData D => data != null ? data : (_fallback != null ? _fallback : (_fallback = ScriptableObject.CreateInstance<FighterData>()));
         FighterData _fallback;
 
-        Animator  _anim;
-        Rigidbody _rb;
-        bool      _isBlocking;
-        float     _dodgeCooldownTimer;
+        Animator     _anim;
+        Rigidbody    _rb;
+        bool         _isBlocking;
+        PunchHeight  _blockHeight = PunchHeight.Mid;   // 현재 가드 방향 (상/중/하)
+        float        _dodgeCooldownTimer;
         Coroutine _attackCoroutine;
         Coroutine _hitFlashCoroutine;
         float     _spawnY;          // Y 고정 기준
@@ -62,7 +64,6 @@ namespace PersonalityBox.Characters
         static readonly int AnimHook         = Animator.StringToHash("Hook");
         static readonly int AnimUpper        = Animator.StringToHash("Uppercut");
         static readonly int AnimDodge        = Animator.StringToHash("Dodge");
-        static readonly int AnimSpecial      = Animator.StringToHash("Special");
         static readonly int AnimHit          = Animator.StringToHash("Hit");
         static readonly int AnimKO           = Animator.StringToHash("KO");
         static readonly int AnimAwaken       = Animator.StringToHash("Awaken");
@@ -216,12 +217,20 @@ namespace PersonalityBox.Characters
             }
         }
 
-        public void StartBlock()
+        /// <param name="height">가드 방향 — 들어오는 공격의 높이와 일치해야 막힘 (상/중/하)</param>
+        public void StartBlock(PunchHeight height = PunchHeight.Mid)
         {
             if (!CanAct()) return;
-            _isBlocking = true;
+            _isBlocking  = true;
+            _blockHeight = height;
             State = FighterState.Blocking;
             _anim.SetBool(AnimBlock, true);
+        }
+
+        /// 가드 중 방향 전환 (Q를 누른 채로 W/S 전환 시 호출)
+        public void SetBlockHeight(PunchHeight height)
+        {
+            if (_isBlocking) _blockHeight = height;
         }
 
         public void StopBlock()
@@ -270,30 +279,23 @@ namespace PersonalityBox.Characters
             _anim.SetTrigger(trigger);
 
             if (_attackCoroutine != null) StopCoroutine(_attackCoroutine);
-            _attackCoroutine = StartCoroutine(AttackRoutine(type, false, height));
+            _attackCoroutine = StartCoroutine(AttackRoutine(type, height));
         }
 
-        public void UseSpecial()
-        {
-            if (!CanAttack() || CurrentStamina < D.specialStamCost) return;
-            ConsumeStamina(D.specialStamCost);
-            State = FighterState.Attacking;
-            _anim.SetTrigger(AnimSpecial);
-            StartCoroutine(AttackRoutine(null, true, PunchHeight.Mid));
-        }
-
-        /// <param name="bypassBlock">true이면 가드 무시 (하단 공격)</param>
-        public void TakeDamage(float rawDamage, bool isSpecial = false, bool bypassBlock = false)
+        /// <param name="attackHeight">공격이 들어온 높이 — 가드 방향이 이 값과 같아야 막힘</param>
+        public void TakeDamage(float rawDamage, PunchHeight attackHeight)
         {
             if (State == FighterState.KO) return;
-            // 가드 중이면 (하단 공격이 아닌 한) 데미지를 1로 고정
-            float reduced = (_isBlocking && !bypassBlock) ? 1f : rawDamage;
+
+            // 가드 방향이 공격 높이와 정확히 일치할 때만 막힘 (데미지 1로 고정)
+            bool blocked = _isBlocking && _blockHeight == attackHeight;
+            float reduced = blocked ? 1f : rawDamage;
             CurrentHP = Mathf.Max(0f, CurrentHP - reduced);
             OnHealthChanged?.Invoke(CurrentHP, D.maxHealth);
             _anim.SetTrigger(AnimHit);
 
-            // 넉백: 수평 방향만 (Y 고정이므로 수직 힘 없음)
-            if (!_isBlocking && opponentTransform != null)
+            // 넉백: 막지 못했을 때만, 수평 방향으로만 (Y 고정)
+            if (!blocked && opponentTransform != null)
             {
                 Vector3 pushDir = (transform.position - opponentTransform.position);
                 pushDir.y = 0f;
@@ -303,10 +305,10 @@ namespace PersonalityBox.Characters
 
             // 히트 플래시
             if (_hitFlashCoroutine != null) StopCoroutine(_hitFlashCoroutine);
-            _hitFlashCoroutine = StartCoroutine(HitFlashCo(isSpecial));
+            _hitFlashCoroutine = StartCoroutine(HitFlashCo());
 
             // 타격감: 히트스톱 + 카메라 쉐이크
-            HitFeedback.Instance?.TriggerHit(isSpecial);
+            HitFeedback.Instance?.TriggerHit();
 
             CheckAwakening();
             if (CurrentHP <= 0f) TriggerKO();
@@ -386,9 +388,8 @@ namespace PersonalityBox.Characters
             OnKO?.Invoke();
         }
 
-        float GetPunchDamage(PunchType? type, bool isSpecial)
+        float GetPunchDamage(PunchType? type)
         {
-            if (isSpecial) return D.specialDamage * (IsAwakened ? D.awakenDamageBonus : 1f);
             float base_ = type switch {
                 PunchType.Jab      => D.jabDamage,
                 PunchType.Hook     => D.hookDamage,
@@ -400,22 +401,19 @@ namespace PersonalityBox.Characters
 
         // ── Coroutines ───────────────────────────────────────────────────────
 
-        IEnumerator AttackRoutine(PunchType? type, bool isSpecial, PunchHeight height = PunchHeight.Mid)
+        IEnumerator AttackRoutine(PunchType? type, PunchHeight height = PunchHeight.Mid)
         {
             // 주먹 트레일 시작
             var trail = punchOrigin != null ? punchOrigin.GetComponent<TrailRenderer>() : null;
             if (trail != null) { trail.Clear(); trail.emitting = true; }
 
-            yield return new WaitForSeconds(isSpecial ? 0.3f : 0.15f);
+            yield return new WaitForSeconds(0.15f);
 
             // 높이별 히트박스 기준점 계산
             // High=+0.55, Mid=0, Low=-0.45 (단위: 월드 Y)
-            float yOffset = isSpecial ? 0f : HeightOffsets[(int)height];
+            float yOffset = HeightOffsets[(int)height];
             Vector3 hitOrigin = (punchOrigin != null ? punchOrigin.position : transform.position) + Vector3.up * yOffset;
-
-            // 하단 공격은 가드 무시
-            bool bypassBlock = !isSpecial && height == PunchHeight.Low;
-            float reach = isSpecial ? 2.2f : 1.6f;
+            float reach = 1.6f;
 
             // ① 상대를 직접 거리 체크 (가장 확실한 판정) ─────────────────
             bool landed = false;
@@ -432,7 +430,7 @@ namespace PersonalityBox.Characters
                     var oppFighter = opponentTransform.GetComponentInParent<Fighter>();
                     if (oppFighter != null && oppFighter != this)
                     {
-                        oppFighter.TakeDamage(GetPunchDamage(type, isSpecial), isSpecial, bypassBlock);
+                        oppFighter.TakeDamage(GetPunchDamage(type), height);
                         landed = true;
                     }
                 }
@@ -448,13 +446,13 @@ namespace PersonalityBox.Characters
                     var target = col.GetComponentInParent<Fighter>();
                     if (target != null && target != this)
                     {
-                        target.TakeDamage(GetPunchDamage(type, isSpecial), isSpecial, bypassBlock);
+                        target.TakeDamage(GetPunchDamage(type), height);
                         break;
                     }
                 }
             }
 
-            yield return new WaitForSeconds(isSpecial ? 0.5f : 0.25f);
+            yield return new WaitForSeconds(0.25f);
 
             // 주먹 트레일 종료
             if (trail != null) trail.emitting = false;
@@ -477,17 +475,16 @@ namespace PersonalityBox.Characters
                 State = IsAwakened ? FighterState.Awakened : FighterState.Idle;
         }
 
-        IEnumerator HitFlashCo(bool isSpecial)
+        IEnumerator HitFlashCo()
         {
             if (bodyRenderer == null) yield break;
             var mpb = new MaterialPropertyBlock();
-            // 일반 타격은 빨강, 필살기는 주황
-            Color flashColor = isSpecial ? new Color(3f, 0.6f, 0f) : new Color(3f, 0f, 0f);
+            Color flashColor = new Color(3f, 0f, 0f);
             mpb.SetColor("_BaseColor", flashColor);       // URP
             mpb.SetColor("_EmissionColor", flashColor * 0.6f);
             bodyRenderer.SetPropertyBlock(mpb);
 
-            yield return new WaitForSecondsRealtime(isSpecial ? 0.18f : 0.10f);
+            yield return new WaitForSecondsRealtime(0.10f);
 
             bodyRenderer.SetPropertyBlock(new MaterialPropertyBlock());
             _hitFlashCoroutine = null;

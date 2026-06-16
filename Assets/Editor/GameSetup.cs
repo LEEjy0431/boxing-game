@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
+using UnityEditor.Build.Reporting;
 using PersonalityBox.Characters;
 using PersonalityBox.Core;
 using PersonalityBox.AI;
@@ -89,6 +90,48 @@ public static class GameSetup
         Debug.Log("[COMPLETE FIX] ✓ 완료! 이제 Play ▶ 버튼을 누르세요.");
         Debug.Log("[COMPLETE FIX] 조작법: WASD=이동 | J=잽 K=훅 L=어퍼컷 Space=필살기 | Q=가드 Shift=회피");
         Debug.Log("════════════════════════════════════════════════════");
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 📦 Windows EXE 빌드 — Builds/BoxingGame/BoxingGame.exe 로 출력
+    // ════════════════════════════════════════════════════════════════════════
+    [MenuItem("Tools/PersonalityBox/📦 Build EXE (Windows)")]
+    static void BuildWindowsExe()
+    {
+        string buildDir = System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(Application.dataPath), "Builds", "BoxingGame");
+        System.IO.Directory.CreateDirectory(buildDir);
+
+        var scenePath = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(SceneSavePath) != null
+            ? SceneSavePath
+            : UnityEngine.SceneManagement.SceneManager.GetActiveScene().path;
+
+        if (string.IsNullOrEmpty(scenePath))
+        {
+            Debug.LogError("[Build] 빌드할 씬을 찾지 못했습니다. 먼저 BoxingGame 씬을 저장하세요.");
+            return;
+        }
+
+        var options = new BuildPlayerOptions
+        {
+            scenes           = new[] { scenePath },
+            locationPathName = System.IO.Path.Combine(buildDir, "BoxingGame.exe"),
+            target           = BuildTarget.StandaloneWindows64,
+            options          = BuildOptions.ShowBuiltPlayer
+        };
+
+        Debug.Log($"[Build] 빌드 시작... 씬={scenePath} → {options.locationPathName}");
+        BuildReport report = BuildPipeline.BuildPlayer(options);
+
+        if (report.summary.result == BuildResult.Succeeded)
+        {
+            Debug.Log($"[Build] ✓ 성공! 크기={report.summary.totalSize / 1024 / 1024}MB → {options.locationPathName}");
+            EditorUtility.RevealInFinder(options.locationPathName);
+        }
+        else
+        {
+            Debug.LogError($"[Build] ✗ 실패: {report.summary.result} (에러 {report.summary.totalErrors}개) — Console 위쪽 에러 메시지 확인");
+        }
     }
 
     // 잘못 생성된 BoxingArena(Stage 프리팹 복제본 / 간이 플레이스홀더) 제거

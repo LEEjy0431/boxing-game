@@ -76,7 +76,12 @@ namespace PersonalityBox.AI
             if (shouldBlock && !_isBlocking)
             {
                 _isBlocking = true;
-                _self.StartBlock();
+                // 가드 방향을 무작위로 선택 (상/중/하) — 상대 공격 높이와 맞아야 막힘
+                float hRoll = Random.value;
+                PunchHeight guardHeight = hRoll < 0.34f ? PunchHeight.High
+                                        : hRoll < 0.67f ? PunchHeight.Mid
+                                        : PunchHeight.Low;
+                _self.StartBlock(guardHeight);
                 yield return new WaitForSeconds(Random.Range(0.2f, 0.45f));
                 _self.StopBlock();
                 _isBlocking = false;
@@ -132,13 +137,6 @@ namespace PersonalityBox.AI
             {
                 float roll = Random.value;
 
-                float specialCost = _self.data != null ? _self.data.specialStamCost : 40f;
-                if (_self.IsAwakened && roll > 0.65f && _self.CurrentStamina >= specialCost)
-                {
-                    _self.UseSpecial();
-                    yield break;
-                }
-
                 PunchType punch = behaviour switch {
                     AIBehaviour.Aggressive => roll < 0.45f ? PunchType.Hook     : PunchType.Uppercut,
                     AIBehaviour.Technical  => roll < 0.55f ? PunchType.Jab      : PunchType.Hook,
@@ -147,16 +145,19 @@ namespace PersonalityBox.AI
                 };
 
                 // 높이 선택:
-                // - 상대가 가드 중이면 하단(가드 무시)을 높은 확률로 선택
-                // - Technical AI는 상단/하단 믹스업을 적극 활용
+                // - 상대가 가드 중이면 상대 가드 방향과 다른 높이를 노려 정타 시도
                 // - 그 외에는 확률 기반으로 고름
                 bool oppBlocking = _opponent.State == FighterState.Blocking;
                 PunchHeight height;
                 if (oppBlocking)
                 {
-                    height = behaviour == AIBehaviour.Technical
-                        ? (Random.value > 0.3f ? PunchHeight.Low : PunchHeight.High)
-                        : (Random.value > 0.45f ? PunchHeight.Low : PunchHeight.Mid);
+                    var blocked = _opponent.CurrentBlockHeight;
+                    PunchHeight[] others = blocked switch {
+                        PunchHeight.High => new[] { PunchHeight.Mid,  PunchHeight.Low  },
+                        PunchHeight.Low  => new[] { PunchHeight.Mid,  PunchHeight.High },
+                        _                => new[] { PunchHeight.High, PunchHeight.Low  },
+                    };
+                    height = others[Random.value > 0.5f ? 0 : 1];
                 }
                 else
                 {

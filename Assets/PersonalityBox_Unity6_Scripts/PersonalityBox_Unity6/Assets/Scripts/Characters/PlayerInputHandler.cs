@@ -5,13 +5,14 @@ namespace PersonalityBox.Characters
 {
     /// <summary>
     /// 3D 조작 입력.
-    /// WASD = XZ 평면 이동 | Q = 가드 | Shift = 회피
-    /// J/K/L = 잽/훅/어퍼컷 | Space = 필살기
+    /// WASD = XZ 평면 이동 | Q(홀드) = 가드 | Shift = 회피
+    /// J/K/L = 잽/훅/어퍼컷
     ///
-    /// 공격 높이 — 펀치 키 입력 시 이동 방향으로 결정:
-    ///   W(위) 누른 채로 펀치 = 상단(High)
-    ///   S(아래) 누른 채로 펀치 = 하단(Low) ← 가드 무시
+    /// 높이는 W/S로 결정되며 공격과 가드에 동일하게 적용:
+    ///   W 누른 채로 = 상단(High)
+    ///   S 누른 채로 = 하단(Low)
     ///   중립 = 중단(Mid)
+    /// 가드는 공격 높이와 정확히 일치해야 막힘 (틀리면 그대로 맞음).
     /// </summary>
     [RequireComponent(typeof(Fighter))]
     public class PlayerInputHandler : MonoBehaviour
@@ -71,11 +72,19 @@ namespace PersonalityBox.Characters
             if (Input.GetKey(KeyCode.A)) move -= side;
             if (move.sqrMagnitude > 1f) move.Normalize();
 
-            _fighter.Move(move.x, move.z);
+            // 높이 결정: W=상단 / S=하단 / 중립=중단 (공격에도, 가드에도 동일하게 사용)
+            bool wDown = Input.GetKey(KeyCode.W);
+            bool sDown = Input.GetKey(KeyCode.S);
+            PunchHeight height = wDown ? PunchHeight.High
+                               : sDown ? PunchHeight.Low
+                               : PunchHeight.Mid;
 
-            // 가드: Q (홀드)
-            if (Input.GetKeyDown(KeyCode.Q)) _fighter.StartBlock();
+            // 가드: Q (홀드) — W/S로 가드 방향(상단/하단/중단) 전환 가능
+            if (Input.GetKeyDown(KeyCode.Q)) _fighter.StartBlock(height);
+            if (Input.GetKey(KeyCode.Q))     _fighter.SetBlockHeight(height);
             if (Input.GetKeyUp(KeyCode.Q))   _fighter.StopBlock();
+
+            _fighter.Move(move.x, move.z);
 
             // 회피: Left Shift — 현재 이동 방향으로 회피
             if (Input.GetKeyDown(KeyCode.LeftShift))
@@ -84,17 +93,9 @@ namespace PersonalityBox.Characters
                 _fighter.Dodge(dodgeDir.normalized);
             }
 
-            // 높이 결정: W=상단 / S=하단 / 중립=중단
-            bool wDown = Input.GetKey(KeyCode.W);
-            bool sDown = Input.GetKey(KeyCode.S);
-            PunchHeight height = wDown ? PunchHeight.High
-                               : sDown ? PunchHeight.Low
-                               : PunchHeight.Mid;
-
             if (Input.GetKeyDown(KeyCode.J)) _fighter.Punch(PunchType.Jab,      height);
             if (Input.GetKeyDown(KeyCode.K)) _fighter.Punch(PunchType.Hook,     height);
             if (Input.GetKeyDown(KeyCode.L)) _fighter.Punch(PunchType.Uppercut, height);
-            if (Input.GetKeyDown(KeyCode.Space)) _fighter.UseSpecial();
         }
 
         // ────────────────── Player 2 ─────────────────────────────────────────
@@ -106,12 +107,17 @@ namespace PersonalityBox.Characters
             if (Input.GetKey(KeyCode.UpArrow))    v =  1f;
             if (Input.GetKey(KeyCode.DownArrow))  v = -1f;
 
+            PunchHeight height = v > 0.3f  ? PunchHeight.High
+                               : v < -0.3f ? PunchHeight.Low
+                               : PunchHeight.Mid;
+
+            if (Input.GetKeyDown(KeyCode.Keypad0)) _fighter.StartBlock(height);
+            if (Input.GetKey(KeyCode.Keypad0))     _fighter.SetBlockHeight(height);
+            if (Input.GetKeyUp(KeyCode.Keypad0))   _fighter.StopBlock();
+
             Vector3 worldMove = _fighter.transform.TransformDirection(new Vector3(h, 0f, v));
             worldMove.y = 0f;
             _fighter.Move(worldMove.x, worldMove.z);
-
-            if (Input.GetKeyDown(KeyCode.Keypad0)) _fighter.StartBlock();
-            if (Input.GetKeyUp(KeyCode.Keypad0))   _fighter.StopBlock();
 
             if (Input.GetKeyDown(KeyCode.RightShift))
             {
@@ -123,14 +129,9 @@ namespace PersonalityBox.Characters
                 _fighter.Dodge(worldDodge.normalized);
             }
 
-            PunchHeight height = v > 0.3f  ? PunchHeight.High
-                               : v < -0.3f ? PunchHeight.Low
-                               : PunchHeight.Mid;
-
             if (Input.GetKeyDown(KeyCode.Keypad1)) _fighter.Punch(PunchType.Jab,      height);
             if (Input.GetKeyDown(KeyCode.Keypad2)) _fighter.Punch(PunchType.Hook,     height);
             if (Input.GetKeyDown(KeyCode.Keypad3)) _fighter.Punch(PunchType.Uppercut, height);
-            if (Input.GetKeyDown(KeyCode.RightControl)) _fighter.UseSpecial();
         }
     }
 }
