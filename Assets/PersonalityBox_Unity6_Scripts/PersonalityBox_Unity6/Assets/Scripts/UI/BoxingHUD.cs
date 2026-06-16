@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using PersonalityBox.Characters;
 using PersonalityBox.Core;
+using PersonalityBox.AI;
 
 namespace PersonalityBox.UI
 {
