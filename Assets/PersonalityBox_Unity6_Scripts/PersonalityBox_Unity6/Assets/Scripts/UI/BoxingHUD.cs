@@ -30,24 +30,39 @@ namespace PersonalityBox.UI
 
         void Update()
         {
-            // 매 프레임 파이터 탐색 시도
-            if (fighter1 == null) FindFighter(ref fighter1, "Fighter1_Robert");
-            if (fighter2 == null) FindFighter(ref fighter2, "Fighter2_Engie");
+            // 매 프레임 MatchManager의 최신 참조로 강제 동기화 (캐시된 stale 참조 방지)
+            var mm = MatchManager.Instance;
+            if (mm != null)
+            {
+                if (mm.fighter1 != null) fighter1 = mm.fighter1;
+                if (mm.fighter2 != null) fighter2 = mm.fighter2;
+            }
+            // MatchManager가 아직 못 찾았으면 이름으로 직접 탐색
+            if (fighter1 == null)
+            {
+                var go = GameObject.Find("Fighter1_Robert");
+                if (go != null) fighter1 = go.GetComponent<Fighter>();
+            }
+            if (fighter2 == null)
+            {
+                var go = GameObject.Find("Fighter2_Engie");
+                if (go != null) fighter2 = go.GetComponent<Fighter>();
+            }
 
-            // 타이머/라운드 이벤트 한 번만 연결
+            // 타이머/라운드 이벤트 + 이름 표시 한 번만 연결
             if (!_timerHooked && fighter1 != null && fighter2 != null)
             {
-                var mm = MatchManager.Instance;
                 if (mm != null)
                 {
                     mm.OnTimerUpdate += t => { if (timerText) timerText.text = Mathf.CeilToInt(t).ToString("00"); };
                     mm.OnRoundStart  += r => { if (roundText)  roundText.text  = $"ROUND {r}"; };
-                    _timerHooked = true;
                 }
                 if (nameText1) nameText1.text = (fighter1.data != null && fighter1.data.fighterName.Length > 0)
                     ? fighter1.data.fighterName : "PLAYER";
                 if (nameText2) nameText2.text = (fighter2.data != null && fighter2.data.fighterName.Length > 0)
                     ? fighter2.data.fighterName : "ENEMY";
+                _timerHooked = true;
+                Debug.Log($"[BoxingHUD] 연결 완료: P1={fighter1.name}, P2={fighter2.name}");
             }
 
             if (fighter1 == null || fighter2 == null) return;
@@ -61,20 +76,6 @@ namespace PersonalityBox.UI
             SetFill(staminaBar1, fighter1.CurrentStamina / ms1);
             SetFill(healthBar2,  fighter2.CurrentHP      / mh2);
             SetFill(staminaBar2, fighter2.CurrentStamina / ms2);
-        }
-
-        static void FindFighter(ref Fighter slot, string goName)
-        {
-            // 1) MatchManager
-            var mm = MatchManager.Instance;
-            if (mm != null)
-            {
-                if (goName.Contains("Robert") && mm.fighter1 != null) { slot = mm.fighter1; return; }
-                if (goName.Contains("Engie")  && mm.fighter2 != null) { slot = mm.fighter2; return; }
-            }
-            // 2) 이름으로 직접 탐색
-            var go = GameObject.Find(goName);
-            if (go != null) slot = go.GetComponent<Fighter>();
         }
 
         void SetFill(Image img, float v) { if (img) img.fillAmount = Mathf.Clamp01(v); }

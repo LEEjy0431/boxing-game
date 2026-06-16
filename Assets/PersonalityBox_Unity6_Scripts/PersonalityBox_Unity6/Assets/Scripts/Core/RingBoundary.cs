@@ -4,17 +4,23 @@ using PersonalityBox.Characters;
 namespace PersonalityBox.Core
 {
     /// <summary>
-    /// 파이터가 링 밖으로 나가지 못하도록 막는 경계 스크립트.
-    /// 링 중심 오브젝트에 부착. ringRadius = 링 반지름 (단위: 유니티 미터).
+    /// 파이터가 링(로프) 밖으로 나가지 못하도록 막는 경계 스크립트.
+    /// useRectangle=true면 실제 로프 사각형 기준으로 막음 (Building의 Corner 오브젝트 기준).
+    /// false면 기존 원형 경계 사용.
     /// </summary>
     public class RingBoundary : MonoBehaviour
     {
+        [Header("원형 모드 (useRectangle=false일 때)")]
         public float ringRadius = 5f;
+
+        [Header("사각형 모드 (실제 로프 기준, 권장)")]
+        public bool useRectangle = false;
+        public Vector2 rectHalfExtents = new Vector2(3f, 3f);
+
         public Fighter[] fighters;
 
         void Start()
         {
-            // Inspector에서 연결 안 됐으면 씬에서 자동 탐색
             if (fighters == null || fighters.Length == 0)
                 fighters = FindObjectsByType<Fighter>(FindObjectsSortMode.None);
         }
@@ -25,26 +31,52 @@ namespace PersonalityBox.Core
             foreach (var f in fighters)
             {
                 if (f == null) continue;
+                Vector3 local = f.transform.position - transform.position;
 
-                Vector3 offset = f.transform.position - transform.position;
-                offset.y = 0f;
-
-                if (offset.magnitude > ringRadius)
+                if (useRectangle)
                 {
-                    // 경계 안으로 밀어 넣기
-                    Vector3 clamped = offset.normalized * ringRadius;
-                    f.transform.position = new Vector3(
-                        transform.position.x + clamped.x,
-                        f.transform.position.y,
-                        transform.position.z + clamped.z);
+                    float cx = Mathf.Clamp(local.x, -rectHalfExtents.x, rectHalfExtents.x);
+                    float cz = Mathf.Clamp(local.z, -rectHalfExtents.y, rectHalfExtents.y);
+                    if (!Mathf.Approximately(cx, local.x) || !Mathf.Approximately(cz, local.z))
+                    {
+                        f.transform.position = new Vector3(
+                            transform.position.x + cx,
+                            f.transform.position.y,
+                            transform.position.z + cz);
+                    }
+                }
+                else
+                {
+                    Vector3 offset = local; offset.y = 0f;
+                    if (offset.magnitude > ringRadius)
+                    {
+                        Vector3 clamped = offset.normalized * ringRadius;
+                        f.transform.position = new Vector3(
+                            transform.position.x + clamped.x,
+                            f.transform.position.y,
+                            transform.position.z + clamped.z);
+                    }
                 }
             }
         }
 
         void OnDrawGizmos()
         {
-            Gizmos.color = new Color(1f, 1f, 0f, 0.3f);
-            DrawCircle(transform.position, ringRadius, 40);
+            Gizmos.color = new Color(1f, 1f, 0f, 0.4f);
+            if (useRectangle)
+            {
+                Vector3 c = transform.position;
+                Vector3 a = c + new Vector3(-rectHalfExtents.x, 0,  rectHalfExtents.y);
+                Vector3 b = c + new Vector3( rectHalfExtents.x, 0,  rectHalfExtents.y);
+                Vector3 d = c + new Vector3( rectHalfExtents.x, 0, -rectHalfExtents.y);
+                Vector3 e = c + new Vector3(-rectHalfExtents.x, 0, -rectHalfExtents.y);
+                Gizmos.DrawLine(a, b); Gizmos.DrawLine(b, d);
+                Gizmos.DrawLine(d, e); Gizmos.DrawLine(e, a);
+            }
+            else
+            {
+                DrawCircle(transform.position, ringRadius, 40);
+            }
         }
 
         void DrawCircle(Vector3 center, float radius, int segments)

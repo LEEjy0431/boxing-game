@@ -81,21 +81,36 @@ namespace PersonalityBox.Core
                 Debug.LogWarning("[MatchManager] 링 바닥 감지 실패 — 파이터가 Y=0에 스폰됩니다.");
             }
 
-            // RingBoundary 없으면 런타임에 자동 생성
+            // RingBoundary 설정 — Building의 실제 Corner(로프 기둥) 기준 사각 경계 우선
+            Vector3 ringCenter  = new Vector3(0f, ringY > 0.01f ? ringY : 0f, 0f);
+            Vector2 ringExtents = Vector2.zero;
+            if (TryGetBuildingRingBounds(out Vector3 bCenter, out Vector2 bExtents))
+            {
+                ringCenter.x = bCenter.x;
+                ringCenter.z = bCenter.z;
+                ringExtents  = bExtents;
+            }
+
             var existingRB = FindAnyObjectByType<RingBoundary>();
             if (existingRB == null)
             {
                 var rbGo = new GameObject("RingBoundary");
-                rbGo.transform.position = new Vector3(0f, ringY > 0.01f ? ringY : 0f, 0f);
-                var rb = rbGo.AddComponent<RingBoundary>();
-                rb.ringRadius = 5f;
-                rb.fighters   = new Fighter[] { fighter1, fighter2 };
-                Debug.Log("[MatchManager] RingBoundary 자동 생성 (반경 5m)");
+                existingRB = rbGo.AddComponent<RingBoundary>();
             }
-            else if (existingRB.fighters == null || existingRB.fighters.Length == 0)
+            existingRB.transform.position = ringCenter;
+            if (ringExtents.x > 0.1f)
             {
-                existingRB.fighters = new Fighter[] { fighter1, fighter2 };
+                existingRB.useRectangle    = true;
+                existingRB.rectHalfExtents = ringExtents;
+                Debug.Log($"[MatchManager] RingBoundary(사각형) Building 기준 설정: 반폭={ringExtents}");
             }
+            else
+            {
+                existingRB.useRectangle = false;
+                existingRB.ringRadius   = 5f;
+                Debug.Log("[MatchManager] RingBoundary(원형) 기본값 사용 (반경 5m) — Building/Corner 탐지 실패");
+            }
+            existingRB.fighters = new Fighter[] { fighter1, fighter2 };
 
             StartCoroutine(RunMatch());
         }
@@ -281,5 +296,36 @@ namespace PersonalityBox.Core
 
         public string GetOpponentBackstory(Fighter opponent)
             => opponent.data != null ? opponent.data.backstory : "";
+
+        // Building 하위 "Corner" 오브젝트(로프 기둥)로 실제 링 사각 경계를 계산
+        static bool TryGetBuildingRingBounds(out Vector3 center, out Vector2 halfExtents)
+        {
+            center = Vector3.zero;
+            halfExtents = Vector2.zero;
+
+            var building = GameObject.Find("Building");
+            if (building == null) return false;
+
+            float minX = float.MaxValue, maxX = float.MinValue;
+            float minZ = float.MaxValue, maxZ = float.MinValue;
+            int found = 0;
+
+            foreach (Transform t in building.GetComponentsInChildren<Transform>(true))
+            {
+                if (!t.name.StartsWith("Corner")) continue;
+                minX = Mathf.Min(minX, t.position.x);
+                maxX = Mathf.Max(maxX, t.position.x);
+                minZ = Mathf.Min(minZ, t.position.z);
+                maxZ = Mathf.Max(maxZ, t.position.z);
+                found++;
+            }
+
+            if (found < 4 || minX >= maxX || minZ >= maxZ) return false;
+
+            center = new Vector3((minX + maxX) * 0.5f, 0f, (minZ + maxZ) * 0.5f);
+            // 실제 로프는 코너 기둥보다 약간 안쪽 — 85%로 축소
+            halfExtents = new Vector2((maxX - minX) * 0.5f * 0.85f, (maxZ - minZ) * 0.5f * 0.85f);
+            return true;
+        }
     }
 }

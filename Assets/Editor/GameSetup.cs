@@ -47,31 +47,31 @@ public static class GameSetup
         if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
             AssetDatabase.CreateFolder("Assets", "Scenes");
 
-        // ── 1. 중복 오브젝트 제거 ────────────────────────────────────────────
+        // ── 1. 중복 오브젝트 + 잘못 생성된 BoxingArena 제거 ──────────────────
         Debug.Log("[COMPLETE FIX] 1/7 — 중복 오브젝트 제거...");
         KillDuplicates();
+        RemoveGeneratedArena();
 
-        // ── 2. 경기장(BoxingArena) 씬에 배치 + URP 머티리얼 변환 ─────────────
-        Debug.Log("[COMPLETE FIX] 2/7 — 경기장 설정 & 전체 씬 머티리얼 URP 변환...");
-        EnsureArenaInScene();
-        // BoxingArena 이름과 무관하게 씬 전체 비URP 머티리얼을 변환
+        // ── 2. 씬 전체 머티리얼 URP 변환 (Building 등 기존 경기장은 그대로 사용) ──
+        Debug.Log("[COMPLETE FIX] 2/7 — 전체 씬 머티리얼 URP 변환...");
         ForceSceneWideMaterialsToURP();
 
         // ── 3. 파이터 + GameManager + 카메라 설정 ────────────────────────────
         Debug.Log("[COMPLETE FIX] 3/7 — 파이터 & 매니저 설정...");
         RepairScene();
 
-        // ── 4. 플레이스홀더 애니메이션 클립 생성 ─────────────────────────────
-        Debug.Log("[COMPLETE FIX] 4/7 — 플레이스홀더 애니메이션 클립 생성...");
-        CreatePlaceholderClips();
-
-        // ── 5. FBX 클립 자동 연결 시도 ──────────────────────────────────────
-        Debug.Log("[COMPLETE FIX] 5/7 — FBX 애니메이션 클립 자동 연결...");
-        try { AutoWireAnimations(); } catch (System.Exception e) { Debug.LogWarning("[COMPLETE FIX] FBX 클립 연결 중 오류 (무시됨): " + e.Message); }
-
-        // ── 6. 스케일 & 위치 최종 보정 ───────────────────────────────────────
-        Debug.Log("[COMPLETE FIX] 6/7 — 스케일 & 위치 보정...");
+        // ── 4. 스케일 / Capsule / PunchOrigin 정리 (위치는 다음 단계가 최종 결정) ──
+        Debug.Log("[COMPLETE FIX] 4/7 — 스케일 정리...");
         FixScaleAndClean();
+
+        // ── 5. Building 의 실제 RingFloor/Corner 기준으로 최종 배치 (가장 정확) ──
+        Debug.Log("[COMPLETE FIX] 5/7 — Building 링 기준 최종 배치...");
+        SetupRingFromBuilding();
+
+        // ── 6. 플레이스홀더 애니메이션 클립 생성 ─────────────────────────────
+        Debug.Log("[COMPLETE FIX] 6/7 — 플레이스홀더 애니메이션 클립 생성...");
+        CreatePlaceholderClips();
+        try { AutoWireAnimations(); } catch (System.Exception e) { Debug.LogWarning("[COMPLETE FIX] FBX 클립 연결 중 오류 (무시됨): " + e.Message); }
 
         // ── 7. 저장 ──────────────────────────────────────────────────────────
         Debug.Log("[COMPLETE FIX] 7/7 — 씬 저장...");
@@ -89,6 +89,156 @@ public static class GameSetup
         Debug.Log("[COMPLETE FIX] ✓ 완료! 이제 Play ▶ 버튼을 누르세요.");
         Debug.Log("[COMPLETE FIX] 조작법: WASD=이동 | J=잽 K=훅 L=어퍼컷 Space=필살기 | Q=가드 Shift=회피");
         Debug.Log("════════════════════════════════════════════════════");
+    }
+
+    // 잘못 생성된 BoxingArena(Stage 프리팹 복제본 / 간이 플레이스홀더) 제거
+    // Building 안에 이미 실제 경기장(RingFloor, Rope, Corner 등)이 있으므로 더 이상 만들지 않음
+    [MenuItem("Tools/PersonalityBox/🗑️ 잘못 생성된 BoxingArena 제거")]
+    static void RemoveGeneratedArena()
+    {
+        int removed = 0;
+        foreach (var go in Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+        {
+            if (go.name == "BoxingArena")
+            {
+                Object.DestroyImmediate(go);
+                removed++;
+            }
+        }
+        if (removed > 0)
+        {
+            EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            Debug.Log($"[Reset] 자동 생성된 BoxingArena {removed}개 제거 — Building의 실제 경기장 사용");
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 🥊 Building의 실제 RingFloor / Corner(로프 기둥) 기준으로 파이터 배치 + 경계 설정
+    //    더 이상 별도 BoxingArena를 생성하지 않고, 기존 Building 경기장을 그대로 사용
+    // ════════════════════════════════════════════════════════════════════════
+    [MenuItem("Tools/PersonalityBox/🥊 Building 링 기준 배치")]
+    static void SetupRingFromBuilding()
+    {
+        var building = GameObject.Find("Building");
+        if (building == null)
+        {
+            Debug.LogWarning("[Ring] 'Building' 오브젝트를 찾을 수 없습니다 — 건너뜀.");
+            return;
+        }
+
+        // ── 1. RingFloor 로 바닥 Y 탐지 ───────────────────────────────────
+        Transform ringFloor = null;
+        foreach (Transform t in building.GetComponentsInChildren<Transform>(true))
+            if (t.name == "RingFloor") { ringFloor = t; break; }
+
+        float floorY = 0f;
+        if (ringFloor != null)
+        {
+            var r = ringFloor.GetComponent<Renderer>();
+            floorY = r != null ? r.bounds.max.y : ringFloor.position.y;
+        }
+        else
+        {
+            Debug.LogWarning("[Ring] Building 안에 'RingFloor'를 찾지 못했습니다.");
+        }
+
+        // ── 2. Corner(로프 기둥) 4개로 사각 경계 계산. 없으면 RingPillarsBase로 대체 ──
+        float minX = float.MaxValue, maxX = float.MinValue;
+        float minZ = float.MaxValue, maxZ = float.MinValue;
+        int cornerCount = 0;
+        foreach (Transform t in building.GetComponentsInChildren<Transform>(true))
+        {
+            if (!t.name.StartsWith("Corner")) continue;
+            minX = Mathf.Min(minX, t.position.x); maxX = Mathf.Max(maxX, t.position.x);
+            minZ = Mathf.Min(minZ, t.position.z); maxZ = Mathf.Max(maxZ, t.position.z);
+            cornerCount++;
+        }
+        if (cornerCount < 4)
+        {
+            minX = float.MaxValue; maxX = float.MinValue; minZ = float.MaxValue; maxZ = float.MinValue;
+            cornerCount = 0;
+            foreach (Transform t in building.GetComponentsInChildren<Transform>(true))
+            {
+                if (!t.name.StartsWith("RingPillarsBase")) continue;
+                minX = Mathf.Min(minX, t.position.x); maxX = Mathf.Max(maxX, t.position.x);
+                minZ = Mathf.Min(minZ, t.position.z); maxZ = Mathf.Max(maxZ, t.position.z);
+                cornerCount++;
+            }
+        }
+
+        bool gotCorners = cornerCount >= 4 && minX < maxX && minZ < maxZ;
+        Vector3 ringCenter;
+        Vector2 halfExtents;
+
+        if (gotCorners)
+        {
+            ringCenter  = new Vector3((minX + maxX) * 0.5f, floorY, (minZ + maxZ) * 0.5f);
+            // 실제 로프는 코너 기둥보다 약간 안쪽 — 85%로 축소
+            halfExtents = new Vector2((maxX - minX) * 0.5f * 0.85f, (maxZ - minZ) * 0.5f * 0.85f);
+            Debug.Log($"[Ring] Corner {cornerCount}개 탐지 — 중심={ringCenter}, 반폭=({halfExtents.x:F2},{halfExtents.y:F2})");
+        }
+        else
+        {
+            ringCenter  = new Vector3(0f, floorY, 0f);
+            halfExtents = new Vector2(3f, 3f);
+            Debug.LogWarning("[Ring] Corner 오브젝트(4개 미만) — 기본 경계(±3m) 사용");
+        }
+
+        // ── 3. 파이터를 링 중심 기준 안쪽에 배치 ───────────────────────────
+        float spawnOffset = Mathf.Max(1.5f, halfExtents.x * 0.5f);
+        var f1go = GameObject.Find("Fighter1_Robert");
+        var f2go = GameObject.Find("Fighter2_Engie");
+
+        if (f1go != null)
+        {
+            f1go.transform.position = new Vector3(ringCenter.x - spawnOffset, floorY, ringCenter.z);
+            f1go.transform.rotation = Quaternion.Euler(0f, 90f, 0f);
+        }
+        if (f2go != null)
+        {
+            f2go.transform.position = new Vector3(ringCenter.x + spawnOffset, floorY, ringCenter.z);
+            f2go.transform.rotation = Quaternion.Euler(0f, -90f, 0f);
+        }
+
+        // ── 4. MatchManager 스폰포인트 / Y 보정 ────────────────────────────
+        var mm = Object.FindAnyObjectByType<MatchManager>();
+        if (mm != null)
+        {
+            mm.ringFloorYOverride = floorY;
+            if (mm.spawnPoint1 != null)
+                mm.spawnPoint1.position = new Vector3(ringCenter.x - spawnOffset, floorY, ringCenter.z);
+            if (mm.spawnPoint2 != null)
+                mm.spawnPoint2.position = new Vector3(ringCenter.x + spawnOffset, floorY, ringCenter.z);
+            if (f1go != null) mm.fighter1 = f1go.GetComponent<Fighter>();
+            if (f2go != null) mm.fighter2 = f2go.GetComponent<Fighter>();
+        }
+
+        // ── 5. RingBoundary — 실제 로프 사각형 경계로 설정 ─────────────────
+        var rb = Object.FindAnyObjectByType<RingBoundary>();
+        if (rb == null)
+        {
+            var rbGo = new GameObject("RingBoundary");
+            rb = rbGo.AddComponent<RingBoundary>();
+        }
+        rb.transform.position = ringCenter;
+        rb.useRectangle    = gotCorners;
+        rb.rectHalfExtents = halfExtents;
+        if (!gotCorners) rb.ringRadius = 5f;
+        if (f1go != null && f2go != null)
+            rb.fighters = new Fighter[] { f1go.GetComponent<Fighter>(), f2go.GetComponent<Fighter>() };
+
+        // ── 6. _FloorCollider 를 RingFloor 표면에 정확히 맞춤 ──────────────
+        var oldFloor = GameObject.Find("_FloorCollider");
+        if (oldFloor != null) Object.DestroyImmediate(oldFloor);
+        var floorGo = new GameObject("_FloorCollider");
+        floorGo.transform.position = new Vector3(ringCenter.x, floorY - 0.2f, ringCenter.z);
+        var bc = floorGo.AddComponent<BoxCollider>();
+        bc.size = new Vector3(halfExtents.x * 2.4f, 0.4f, halfExtents.y * 2.4f);
+
+        EditorSceneManager.MarkSceneDirty(
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+
+        Debug.Log($"[Ring] ✓ Building 기준 배치 완료 — 바닥Y={floorY:F2}, 파이터 간격={spawnOffset*2:F1}m");
     }
 
     // 씬 전체 비URP 머티리얼을 URP Lit으로 변환 (경기장 이름과 무관)
