@@ -2214,10 +2214,10 @@ public static class GameSetup
         {
             var go = new GameObject("HUD_Canvas");
             hud = go.AddComponent<PersonalityBox.UI.BoxingHUD>();
-            Debug.Log("[Repair] BoxingHUD 추가 완료 — 런타임 시작 시 UI 자동 생성");
+            Debug.Log("[Repair] BoxingHUD 추가 완료 — 런타임에 PlayerInputHandler/AIController로 파이터 자동 탐색");
         }
-        hud.fighter1 = fighter1;
-        hud.fighter2 = fighter2;
+        // BoxingHUD는 런타임에 PlayerInputHandler/AIController 컴포넌트로 파이터를 직접 찾으므로
+        // 여기서 별도로 참조를 주입할 필요 없음.
     }
 
     static float DetectRingFloorY()
