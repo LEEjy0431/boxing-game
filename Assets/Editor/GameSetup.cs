@@ -126,7 +126,7 @@ public static class GameSetup
             return;
         }
 
-        // ── 1. RingFloor 로 바닥 Y 탐지 ───────────────────────────────────
+        // ── 1. RingFloor 로 바닥 Y 탐지 (콜라이더 보장 + 레이캐스트로 실제 윗면) ──
         Transform ringFloor = null;
         foreach (Transform t in building.GetComponentsInChildren<Transform>(true))
             if (t.name == "RingFloor") { ringFloor = t; break; }
@@ -134,8 +134,28 @@ public static class GameSetup
         float floorY = 0f;
         if (ringFloor != null)
         {
-            var r = ringFloor.GetComponent<Renderer>();
-            floorY = r != null ? r.bounds.max.y : ringFloor.position.y;
+            // RingFloor(및 자식)에 MeshCollider 보장 — 파이터가 설 수 있게
+            foreach (var mf in ringFloor.GetComponentsInChildren<MeshFilter>(true))
+                if (mf.GetComponent<Collider>() == null)
+                    mf.gameObject.AddComponent<MeshCollider>();
+
+            var rend = ringFloor.GetComponentInChildren<Renderer>();
+            Vector3 center = rend != null ? rend.bounds.center : ringFloor.position;
+
+            // 윗면 정확히 탐지: 중심 위에서 아래로 레이캐스트
+            if (Physics.Raycast(new Vector3(center.x, center.y + 30f, center.z),
+                                 Vector3.down, out RaycastHit hit, 60f,
+                                 ~0, QueryTriggerInteraction.Ignore)
+                && hit.collider.GetComponentInParent<Fighter>() == null)
+            {
+                floorY = hit.point.y;
+                Debug.Log($"[Ring] RingFloor 윗면 레이캐스트 Y={floorY:F3} ({hit.collider.name})");
+            }
+            else
+            {
+                floorY = rend != null ? rend.bounds.max.y : ringFloor.position.y;
+                Debug.Log($"[Ring] RingFloor 렌더러 bounds Y={floorY:F3} (레이캐스트 실패)");
+            }
         }
         else
         {

@@ -23,7 +23,8 @@ namespace PersonalityBox.Characters
         public LayerMask hitLayer;
 
         [Header("Movement")]
-        public float moveSpeed     = 1.5f;
+        public float moveSpeed        = 1.5f;
+        public float moveStaminaCost  = 12f;   // 이동 중 초당 스태미너 소모
         public float rotationSpeed = 15f;  // 상대 방향으로 회전하는 속도
 
         [Header("Hit Feel")]
@@ -118,11 +119,12 @@ namespace PersonalityBox.Characters
                 CurrentStamina = data.maxStamina;
             }
             State   = FighterState.Idle;
-            _spawnY = transform.position.y;   // 시작 높이 기록
 
             // hitLayer가 0(Nothing)이면 Default 레이어로 초기화
             if (hitLayer == 0)
                 hitLayer = ~0; // Everything — 모든 레이어에 히트 판정
+
+            SnapToGround();   // 실제 바닥에 발을 정확히 맞춤 (떠오름/묻힘 방지)
 
             // opponentTransform이 없으면 씬에서 다른 Fighter를 자동으로 찾음
             if (opponentTransform == null)
@@ -145,12 +147,38 @@ namespace PersonalityBox.Characters
         void FixedUpdate()
         {
             if (_rb == null) return;
-            // Update에서 기록한 이동 속도를 물리 타이밍에 맞춰 적용
-            _rb.linearVelocity = new Vector3(_desiredVelocity.x, 0f, _desiredVelocity.z);
-            // Y 위치 고정
+            // 회피 중에는 DodgeRoutine이 직접 속도를 제어하므로 덮어쓰지 않음
+            if (State != FighterState.Dodging)
+                _rb.linearVelocity = new Vector3(_desiredVelocity.x, 0f, _desiredVelocity.z);
+            // Y 위치 고정 (떠오름/낙하 방지)
             var p = _rb.position;
             if (Mathf.Abs(p.y - _spawnY) > 0.001f)
                 _rb.position = new Vector3(p.x, _spawnY, p.z);
+        }
+
+        /// 현재 XZ 위치에서 아래로 레이캐스트해 실제 바닥 표면에 발을 맞춘다.
+        /// 캡슐 바닥(=피벗) 기준이므로 발이 바닥에 정확히 닿게 된다.
+        public void SnapToGround()
+        {
+            Vector3 origin = new Vector3(transform.position.x,
+                                         transform.position.y + 3f,
+                                         transform.position.z);
+            var hits = Physics.RaycastAll(origin, Vector3.down, 12f, ~0,
+                                          QueryTriggerInteraction.Ignore);
+            float bestY = float.MinValue;
+            bool found = false;
+            foreach (var h in hits)
+            {
+                // 파이터 자신/상대는 무시
+                if (h.collider.GetComponentInParent<Fighter>() != null) continue;
+                if (h.point.y > bestY) { bestY = h.point.y; found = true; }
+            }
+
+            if (found)
+                transform.position = new Vector3(transform.position.x, bestY, transform.position.z);
+
+            _spawnY = transform.position.y;
+            if (_rb != null) _rb.position = transform.position;
         }
 
         // ── Public API ───────────────────────────────────────────────────────
@@ -161,12 +189,31 @@ namespace PersonalityBox.Characters
         {
             if (!CanAct()) return;
 
-            // 속도는 여기서 기록만 하고, 실제 적용은 FixedUpdate에서 처리
+            // 가드/공격 중에는 제자리 (상태 보존)
+            if (State == FighterState.Blocking || State == FighterState.Attacking)
+            {
+                _desiredVelocity = Vector3.zero;
+                _anim.SetFloat(AnimMoveSpeed, 0f);
+                return;
+            }
+            // 회피 중에는 DodgeRoutine이 속도를 직접 제어
+            if (State == FighterState.Dodging)
+                return;
+
             _desiredVelocity = new Vector3(horizontal, 0f, depth) * moveSpeed;
 
             float magnitude = new Vector2(horizontal, depth).magnitude;
             _anim.SetFloat(AnimMoveSpeed, magnitude);
-            State = magnitude > 0.1f ? FighterState.Moving : FighterState.Idle;
+
+            if (magnitude > 0.1f)
+            {
+                State = FighterState.Moving;
+                ConsumeStamina(moveStaminaCost * Time.deltaTime);   // 이동 중 스태미너 직접 소모
+            }
+            else
+            {
+                State = IsAwakened ? FighterState.Awakened : FighterState.Idle;
+            }
         }
 
         public void StartBlock()
@@ -272,8 +319,9 @@ namespace PersonalityBox.Characters
             IsAwakened     = false;
             State          = FighterState.Idle;
             _isBlocking    = false;
+            _desiredVelocity = Vector3.zero;
             _rb.linearVelocity = Vector3.zero;
-            _spawnY = transform.position.y;   // 라운드 시작 위치를 새 기준으로
+            SnapToGround();   // 라운드 시작 위치를 바닥에 맞추고 _spawnY 갱신
             OnHealthChanged?.Invoke(CurrentHP, D.maxHealth);
             OnStaminaChanged?.Invoke(CurrentStamina, D.maxStamina);
         }
@@ -297,14 +345,10 @@ namespace PersonalityBox.Characters
 
         void RegenerateStamina()
         {
-            // 이동 중 스태미너 소모 (초당 15 — 약 6초에 완전 소모)
-            if (State == FighterState.Moving)
-            {
-                ConsumeStamina(15f * Time.deltaTime);
-                return;
-            }
+            // 이동 중에는 회복하지 않음 (소모는 Move()에서 직접 처리)
+            if (State == FighterState.Moving) return;
 
-            // 가드 중이거나 가만히 있으면 회복 (가드 시 1.5배 빠르게)
+            // 가만히 있거나 가드 중이면 회복 (가드 시 1.5배 빠르게)
             if (CurrentStamina >= D.maxStamina) return;
             float regenRate = _isBlocking ? D.staminaRegen * 1.5f : D.staminaRegen;
             CurrentStamina = Mathf.Min(D.maxStamina, CurrentStamina + regenRate * Time.deltaTime);
@@ -370,15 +414,43 @@ namespace PersonalityBox.Characters
 
             // 하단 공격은 가드 무시
             bool bypassBlock = !isSpecial && height == PunchHeight.Low;
+            float reach = isSpecial ? 2.2f : 1.6f;
 
-            float reach = isSpecial ? 1.8f : 1.1f;
-            Collider[] hits = Physics.OverlapSphere(hitOrigin, reach, hitLayer);
-            foreach (var col in hits)
+            // ① 상대를 직접 거리 체크 (가장 확실한 판정) ─────────────────
+            bool landed = false;
+            if (opponentTransform != null)
             {
-                if (col.transform.IsChildOf(transform) || col.transform == transform) continue;
-                var target = col.GetComponentInParent<Fighter>();
-                if (target != null)
-                    target.TakeDamage(GetPunchDamage(type, isSpecial), isSpecial, bypassBlock);
+                Vector3 a = transform.position; a.y = 0f;
+                Vector3 b = opponentTransform.position; b.y = 0f;
+                float dist = Vector3.Distance(a, b);
+                // 상대가 사거리 안 + 대략 앞쪽(내적>0)이면 명중
+                Vector3 toOpp = (b - a).normalized;
+                bool inFront = Vector3.Dot(transform.forward, toOpp) > 0.3f;
+                if (dist <= reach + 0.6f && inFront)
+                {
+                    var oppFighter = opponentTransform.GetComponentInParent<Fighter>();
+                    if (oppFighter != null && oppFighter != this)
+                    {
+                        oppFighter.TakeDamage(GetPunchDamage(type, isSpecial), isSpecial, bypassBlock);
+                        landed = true;
+                    }
+                }
+            }
+
+            // ② 보조: OverlapSphere (혹시 모를 추가 타겟)
+            if (!landed)
+            {
+                Collider[] hits = Physics.OverlapSphere(hitOrigin, reach, hitLayer);
+                foreach (var col in hits)
+                {
+                    if (col.transform.IsChildOf(transform) || col.transform == transform) continue;
+                    var target = col.GetComponentInParent<Fighter>();
+                    if (target != null && target != this)
+                    {
+                        target.TakeDamage(GetPunchDamage(type, isSpecial), isSpecial, bypassBlock);
+                        break;
+                    }
+                }
             }
 
             yield return new WaitForSeconds(isSpecial ? 0.5f : 0.25f);

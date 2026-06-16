@@ -48,9 +48,13 @@ namespace PersonalityBox.Core
             // 카메라가 아직 없으면 재탐색 (씬 로드 타이밍 방어)
             if (_cam == null) RefreshCamera();
 
+            // 이전 히트스톱이 복구되기 전에 새 히트가 오면 timeScale이 묶일 수 있음 → 먼저 복구
+            Time.timeScale      = 1f;
+            Time.fixedDeltaTime = 0.02f;
+
             StopAllCoroutines();
             StartCoroutine(HitStopCo(isSpecial ? specialHitStop : normalHitStop));
-            if (!_shaking && _cam != null) StartCoroutine(ShakeCo());
+            if (_cam != null) StartCoroutine(ShakeCo());
         }
 
         IEnumerator HitStopCo(float duration)
