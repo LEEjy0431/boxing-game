@@ -286,7 +286,8 @@ namespace PersonalityBox.Characters
         public void TakeDamage(float rawDamage, bool isSpecial = false, bool bypassBlock = false)
         {
             if (State == FighterState.KO) return;
-            float reduced = (_isBlocking && !bypassBlock) ? rawDamage * (1f - D.blockDamageReduction) : rawDamage;
+            // 가드 중이면 (하단 공격이 아닌 한) 데미지를 1로 고정
+            float reduced = (_isBlocking && !bypassBlock) ? 1f : rawDamage;
             CurrentHP = Mathf.Max(0f, CurrentHP - reduced);
             OnHealthChanged?.Invoke(CurrentHP, D.maxHealth);
             _anim.SetTrigger(AnimHit);
