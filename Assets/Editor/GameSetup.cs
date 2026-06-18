@@ -8,6 +8,7 @@ using PersonalityBox.Characters;
 using PersonalityBox.Core;
 using PersonalityBox.AI;
 using PersonalityBox.UI;   // BoxingHUD 참조용 (UI 생성은 런타임에서 처리)
+using UnityEngine.UI;
 
 /// <summary>
 /// Tools ▶ PersonalityBox 메뉴 모음
@@ -31,7 +32,8 @@ public static class GameSetup
     // URP 머티리얼 사용 (프로젝트가 URP이므로)
     const string F1MatPath       = "Assets/Same Gev Dudios/Sci-Fi Robots Bundle/Materials/URP/Robert.mat";
     const string F2MatPath       = "Assets/Same Gev Dudios/Sci-Fi Robots Bundle/Materials/URP/Engie.mat";
-    const string AnimCtrlPath    = "Assets/Animations/FighterAnimCtrl.controller";
+    const string AnimCtrlPath      = "Assets/Animations/FighterAnimCtrl.controller";
+    const string MainMenuScenePath = "Assets/Scenes/MainMenu.unity";
 
     // ════════════════════════════════════════════════════════════════════════
     // 🔥 완전 자동 수정 — 처음 실행할 때 이것만 누르면 됩니다
@@ -88,7 +90,7 @@ public static class GameSetup
         AssetDatabase.Refresh();
 
         Debug.Log("[COMPLETE FIX] ✓ 완료! 이제 Play ▶ 버튼을 누르세요.");
-        Debug.Log("[COMPLETE FIX] 조작법: WASD=이동 | J=잽 K=훅 L=어퍼컷 Space=필살기 | Q=가드 Shift=회피");
+        Debug.Log("[COMPLETE FIX] 조작법: WASD=이동 | Space+J=상단잽 Space+K=상단훅 C+J=하단잽 C+K=하단훅 L=어퍼컷 | Space+Q=상단가드 C+Q=하단가드 Q=중단가드 Shift=회피");
         Debug.Log("════════════════════════════════════════════════════");
     }
 
@@ -112,9 +114,15 @@ public static class GameSetup
             return;
         }
 
+        // MainMenu 씬이 있으면 첫 번째 씬으로 추가 (로비 → 게임)
+        var buildScenes = new System.Collections.Generic.List<string>();
+        if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(MainMenuScenePath) != null)
+            buildScenes.Add(MainMenuScenePath);
+        buildScenes.Add(scenePath);
+
         var options = new BuildPlayerOptions
         {
-            scenes           = new[] { scenePath },
+            scenes           = buildScenes.ToArray(),
             locationPathName = System.IO.Path.Combine(buildDir, "BoxingGame.exe"),
             target           = BuildTarget.StandaloneWindows64,
             options          = BuildOptions.ShowBuiltPlayer
@@ -132,6 +140,288 @@ public static class GameSetup
         {
             Debug.LogError($"[Build] ✗ 실패: {report.summary.result} (에러 {report.summary.totalErrors}개) — Console 위쪽 에러 메시지 확인");
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 🎮 BoxBox 로비 씬 자동 생성
+    //    실행 후 📦 Build EXE 하면 로비 씬이 첫 번째 씬으로 포함됩니다.
+    // ════════════════════════════════════════════════════════════════════════
+    [MenuItem("Tools/PersonalityBox/🎮 Create Lobby Scene (BoxBox)")]
+    static void CreateLobbyScene()
+    {
+        if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
+            AssetDatabase.CreateFolder("Assets", "Scenes");
+
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+        // ── 카메라 (어두운 배경) ─────────────────────────────────────────
+        var camGo = new GameObject("Main Camera");
+        camGo.tag = "MainCamera";
+        var cam = camGo.AddComponent<Camera>();
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = new Color(0.04f, 0.04f, 0.1f);
+        camGo.AddComponent<AudioListener>();
+
+        // ── 싱글턴 ──────────────────────────────────────────────────────
+        new GameObject("GameSettings").AddComponent<GameSettings>();
+        new GameObject("SoundManager").AddComponent<SoundManager>();
+
+        // ── EventSystem (없으면 버튼 클릭이 전달되지 않음) ─────────────
+        var esGo = new GameObject("EventSystem");
+        esGo.AddComponent<UnityEngine.EventSystems.EventSystem>();
+        esGo.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+
+        // ── Canvas ───────────────────────────────────────────────────────
+        var canvasGo = new GameObject("LobbyCanvas");
+        var canvas = canvasGo.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        var scaler = canvasGo.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.matchWidthOrHeight  = 0.5f;
+        canvasGo.AddComponent<GraphicRaycaster>();
+
+        var menuUI = canvasGo.AddComponent<MainMenuUI>();
+        canvasGo.AddComponent<LobbyButtonWirer>();  // 런타임에 버튼 이벤트 연결
+
+        // ── 헬퍼: 풀스크린 RectTransform ────────────────────────────────
+        void FullRT(RectTransform rt)
+        {
+            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+        }
+
+        // ── 헬퍼: 패널 생성 ──────────────────────────────────────────────
+        GameObject MakePanel(string name, Color col, bool active)
+        {
+            var p   = new GameObject(name);
+            p.transform.SetParent(canvasGo.transform, false);
+            FullRT(p.AddComponent<Image>().GetComponent<RectTransform>());
+            p.GetComponent<Image>().color = col;
+            p.SetActive(active);
+            return p;
+        }
+
+        // ── 헬퍼: 버튼 생성 ──────────────────────────────────────────────
+        Color btnColor    = new Color(0.75f, 0.1f, 0.05f);
+        Color btnColorAlt = new Color(0.1f, 0.1f, 0.3f);
+
+        GameObject MakeBtn(string goName, string label, Transform parent,
+                           Vector2 ancMin, Vector2 ancMax, Color? col = null)
+        {
+            var go   = DefaultControls.CreateButton(new DefaultControls.Resources());
+            go.name  = goName;
+            go.transform.SetParent(parent, false);
+            var rt   = go.GetComponent<RectTransform>();
+            rt.anchorMin = ancMin; rt.anchorMax = ancMax;
+            rt.offsetMin = new Vector2(10, 5); rt.offsetMax = new Vector2(-10, -5);
+            var img  = go.GetComponent<Image>();
+            if (img)  img.color = col ?? btnColor;
+            var txt  = go.GetComponentInChildren<Text>();
+            if (txt != null)
+            {
+                txt.text      = label;
+                txt.fontSize  = 26;
+                txt.color     = Color.white;
+                txt.fontStyle = FontStyle.Bold;
+            }
+            return go;
+        }
+
+        // ── 헬퍼: Text 레이블 (시스템 폰트 사용 → 한글 지원) ─────────────
+        Text MakeText(string name, Transform parent,
+                      Vector2 ancMin, Vector2 ancMax,
+                      string text, int size, Color col,
+                      FontStyle style = FontStyle.Normal,
+                      TextAnchor align = TextAnchor.MiddleCenter)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rt = go.AddComponent<RectTransform>();
+            rt.anchorMin = ancMin; rt.anchorMax = ancMax;
+            rt.offsetMin = rt.offsetMax = Vector2.zero;
+            var txt = go.AddComponent<Text>();
+            var f = Font.CreateDynamicFontFromOSFont(
+                new string[] { "맑은 고딕", "Malgun Gothic", "Gulim", "Arial Unicode MS", "Arial" }, size);
+            if (f != null) txt.font = f;
+            txt.text = text;
+            txt.fontSize = size;
+            txt.fontStyle = style;
+            txt.color = col;
+            txt.alignment = align;
+            txt.supportRichText = true;
+            txt.horizontalOverflow = HorizontalWrapMode.Wrap;
+            txt.verticalOverflow   = VerticalWrapMode.Overflow;
+            return txt;
+        }
+
+        // ════════════════════════════════════════════════════════════════
+        // 1. 로비 패널 (active)
+        // ════════════════════════════════════════════════════════════════
+        var lobbyPanel = MakePanel("LobbyPanel", new Color(0, 0, 0, 0.88f), true);
+        menuUI.lobbyPanel = lobbyPanel;
+
+        // 로고
+        var logoTmp = MakeText("Logo_BoxBox", lobbyPanel.transform,
+            new Vector2(0.25f, 0.68f), new Vector2(0.75f, 0.92f),
+            "BoxBox", 90, new Color(1f, 0.28f, 0.05f),
+            FontStyle.BoldAndItalic);
+        menuUI.logoText = logoTmp;
+
+        // 부제
+        MakeText("Subtitle", lobbyPanel.transform,
+            new Vector2(0.3f, 0.63f), new Vector2(0.7f, 0.70f),
+            "3D ROBOT BOXING", 22, new Color(0.7f, 0.7f, 0.7f));
+
+        // 4개 버튼
+        MakeBtn("StartButton",    "게임 시작",  lobbyPanel.transform, new Vector2(0.3f, 0.50f), new Vector2(0.7f, 0.61f));
+        MakeBtn("SettingsButton", "설  정",     lobbyPanel.transform, new Vector2(0.3f, 0.37f), new Vector2(0.7f, 0.48f), btnColorAlt);
+        MakeBtn("CommandsButton", "커맨드",     lobbyPanel.transform, new Vector2(0.3f, 0.24f), new Vector2(0.7f, 0.35f), btnColorAlt);
+        MakeBtn("QuitButton",     "나 가 기",   lobbyPanel.transform, new Vector2(0.3f, 0.11f), new Vector2(0.7f, 0.22f), new Color(0.2f,0.2f,0.2f));
+
+        // ════════════════════════════════════════════════════════════════
+        // 2. 모드 선택 패널
+        // ════════════════════════════════════════════════════════════════
+        var modePanel = MakePanel("ModePanel", new Color(0, 0, 0, 0.9f), false);
+        menuUI.modePanel = modePanel;
+
+        MakeText("ModeTitle", modePanel.transform,
+            new Vector2(0.2f,0.78f), new Vector2(0.8f,0.9f),
+            "게임 모드 선택", 42, Color.white, FontStyle.Bold);
+
+        MakeBtn("Mode2_Button", "2인 대전 (PvP)",  modePanel.transform, new Vector2(0.3f,0.60f), new Vector2(0.7f,0.70f));
+        MakeBtn("Mode1_Button", "AI 대전 (1P)",    modePanel.transform, new Vector2(0.3f,0.47f), new Vector2(0.7f,0.57f));
+        MakeBtn("Mode0_Button", "스토리 모드",     modePanel.transform, new Vector2(0.3f,0.34f), new Vector2(0.7f,0.44f));
+        MakeBtn("BackButton_Mode", "← 뒤로",       modePanel.transform, new Vector2(0.3f,0.12f), new Vector2(0.7f,0.22f), btnColorAlt);
+
+        // ════════════════════════════════════════════════════════════════
+        // 3. 캐릭터 선택 패널
+        // ════════════════════════════════════════════════════════════════
+        var charPanel = MakePanel("CharSelectPanel", new Color(0, 0, 0, 0.9f), false);
+        menuUI.charSelectPanel = charPanel;
+
+        MakeText("CharTitle", charPanel.transform,
+            new Vector2(0.1f,0.82f), new Vector2(0.9f,0.93f),
+            "파이터 선택", 42, Color.white, FontStyle.Bold);
+
+        var p1Tmp = MakeText("P1Label", charPanel.transform,
+            new Vector2(0.05f,0.70f), new Vector2(0.48f,0.78f),
+            "P1 : Will", 28, new Color(0.3f,0.6f,1f));
+        menuUI.p1SelectLabel = p1Tmp;
+
+        var p2Tmp = MakeText("P2Label", charPanel.transform,
+            new Vector2(0.52f,0.70f), new Vector2(0.95f,0.78f),
+            "P2 : Echo", 28, new Color(1f,0.4f,0.4f));
+        menuUI.p2SelectLabel = p2Tmp;
+
+        // P1 선택
+        MakeBtn("P1Fighter0_Button", "Will (P1)", charPanel.transform, new Vector2(0.05f,0.57f), new Vector2(0.45f,0.67f));
+        MakeBtn("P1Fighter1_Button", "Echo (P1)", charPanel.transform, new Vector2(0.05f,0.44f), new Vector2(0.45f,0.54f));
+        // P2 선택
+        MakeBtn("P2Fighter0_Button", "Will (P2)", charPanel.transform, new Vector2(0.55f,0.57f), new Vector2(0.95f,0.67f));
+        MakeBtn("P2Fighter1_Button", "Echo (P2)", charPanel.transform, new Vector2(0.55f,0.44f), new Vector2(0.95f,0.54f));
+
+        MakeBtn("StartFightButton", "🥊  싸우기!", charPanel.transform, new Vector2(0.28f,0.26f), new Vector2(0.72f,0.38f), new Color(0.85f,0.15f,0f));
+        MakeBtn("BackButton_Char",  "← 뒤로",      charPanel.transform, new Vector2(0.35f,0.09f), new Vector2(0.65f,0.19f), btnColorAlt);
+
+        // ════════════════════════════════════════════════════════════════
+        // 4. 설정 패널
+        // ════════════════════════════════════════════════════════════════
+        var settingsPanel = MakePanel("SettingsPanel", new Color(0, 0, 0, 0.92f), false);
+        menuUI.settingsPanel = settingsPanel;
+
+        MakeText("SettingsTitle", settingsPanel.transform,
+            new Vector2(0.2f,0.82f), new Vector2(0.8f,0.93f),
+            "설 정", 42, Color.white, FontStyle.Bold);
+
+        // BGM 슬라이더
+        MakeText("BGMLabel", settingsPanel.transform,
+            new Vector2(0.15f,0.66f), new Vector2(0.38f,0.73f),
+            "음악 볼륨", 26, Color.white, align: TextAnchor.MiddleRight);
+        var bgmSliderObj = DefaultControls.CreateSlider(new DefaultControls.Resources());
+        bgmSliderObj.name = "BGMSlider";
+        bgmSliderObj.transform.SetParent(settingsPanel.transform, false);
+        var bgmRT = bgmSliderObj.GetComponent<RectTransform>();
+        bgmRT.anchorMin = new Vector2(0.40f, 0.67f); bgmRT.anchorMax = new Vector2(0.72f, 0.73f);
+        bgmRT.offsetMin = bgmRT.offsetMax = Vector2.zero;
+        var bgmSlider = bgmSliderObj.GetComponent<Slider>();
+        bgmSlider.value = 0.5f;
+        menuUI.bgmSlider = bgmSlider;
+        var bgmValTmp = MakeText("BGMValueLabel", settingsPanel.transform,
+            new Vector2(0.73f,0.67f), new Vector2(0.85f,0.73f),
+            "50%", 24, Color.white, align: TextAnchor.MiddleLeft);
+        menuUI.bgmValueLabel = bgmValTmp;
+
+        // SFX 슬라이더
+        MakeText("SFXLabel", settingsPanel.transform,
+            new Vector2(0.15f,0.54f), new Vector2(0.38f,0.61f),
+            "효과음 볼륨", 26, Color.white, align: TextAnchor.MiddleRight);
+        var sfxSliderObj = DefaultControls.CreateSlider(new DefaultControls.Resources());
+        sfxSliderObj.name = "SFXSlider";
+        sfxSliderObj.transform.SetParent(settingsPanel.transform, false);
+        var sfxRT = sfxSliderObj.GetComponent<RectTransform>();
+        sfxRT.anchorMin = new Vector2(0.40f, 0.55f); sfxRT.anchorMax = new Vector2(0.72f, 0.61f);
+        sfxRT.offsetMin = sfxRT.offsetMax = Vector2.zero;
+        var sfxSlider = sfxSliderObj.GetComponent<Slider>();
+        sfxSlider.value = 1f;
+        menuUI.sfxSlider = sfxSlider;
+        var sfxValTmp = MakeText("SFXValueLabel", settingsPanel.transform,
+            new Vector2(0.73f,0.55f), new Vector2(0.85f,0.61f),
+            "100%", 24, Color.white, align: TextAnchor.MiddleLeft);
+        menuUI.sfxValueLabel = sfxValTmp;
+
+        // 전체화면 토글
+        MakeText("FSLabel", settingsPanel.transform,
+            new Vector2(0.15f,0.42f), new Vector2(0.38f,0.49f),
+            "전체화면", 26, Color.white, align: TextAnchor.MiddleRight);
+        var toggleObj = DefaultControls.CreateToggle(new DefaultControls.Resources());
+        toggleObj.name = "FullscreenToggle";
+        toggleObj.transform.SetParent(settingsPanel.transform, false);
+        var toggleRT = toggleObj.GetComponent<RectTransform>();
+        toggleRT.anchorMin = new Vector2(0.40f, 0.42f); toggleRT.anchorMax = new Vector2(0.52f, 0.49f);
+        toggleRT.offsetMin = toggleRT.offsetMax = Vector2.zero;
+        toggleObj.GetComponent<Toggle>().isOn = true;
+        menuUI.fullscreenToggle = toggleObj.GetComponent<Toggle>();
+
+        MakeBtn("BackButton_Settings", "← 뒤로", settingsPanel.transform,
+            new Vector2(0.35f,0.08f), new Vector2(0.65f,0.18f), btnColorAlt);
+
+        // ════════════════════════════════════════════════════════════════
+        // 5. 커맨드 패널
+        // ════════════════════════════════════════════════════════════════
+        var cmdPanel = MakePanel("CommandsPanel", new Color(0, 0, 0, 0.92f), false);
+        menuUI.commandsPanel = cmdPanel;
+
+        MakeText("CmdTitle", cmdPanel.transform,
+            new Vector2(0.1f,0.83f), new Vector2(0.9f,0.94f),
+            "조작 커맨드", 42, Color.white, FontStyle.Bold);
+
+        MakeText("CmdText", cmdPanel.transform,
+            new Vector2(0.05f,0.18f), new Vector2(0.95f,0.82f),
+            "<color=#FFD700><b>[ 조작 커맨드 ]</b></color>\n\n" +
+            "<size=24>이동: WASD (한 번 누를 때마다 한 스텝)\n\n" +
+            "상단가드: Space+Q (홀드)\n" +
+            "중단가드: Q (홀드)\n" +
+            "하단가드: C+Q (홀드)\n\n" +
+            "회피: Left Shift\n\n" +
+            "상단잽: Space+J     상단훅: Space+K\n" +
+            "중단잽: J              중단훅: K\n" +
+            "하단잽: C+J          하단훅: C+K\n\n" +
+            "어퍼컷: L</size>",
+            22, Color.white, align: TextAnchor.MiddleCenter);
+
+        MakeBtn("BackButton_Commands", "← 뒤로", cmdPanel.transform,
+            new Vector2(0.35f,0.04f), new Vector2(0.65f,0.13f), btnColorAlt);
+
+        // ── 씬 저장 ──────────────────────────────────────────────────────
+        EditorSceneManager.SaveScene(scene, MainMenuScenePath);
+        AssetDatabase.Refresh();
+
+        Debug.Log($"[BoxBox] ✓ 로비 씬 생성 완료 → {MainMenuScenePath}");
+        Debug.Log("[BoxBox] ⚠ 다음 작업:");
+        Debug.Log("[BoxBox]   1) SoundManager Inspector에서 Bell Start, BGM, UI Click 오디오 클립 연결");
+        Debug.Log("[BoxBox]   2) MainMenuUI Inspector에서 availableFighters 배열에 Will_DATA, Echo_DATA 연결");
+        Debug.Log("[BoxBox]   3) 📦 Build EXE 실행 — MainMenu + BoxingGame 씬 포함하여 빌드됩니다");
     }
 
     // 잘못 생성된 BoxingArena(Stage 프리팹 복제본 / 간이 플레이스홀더) 제거

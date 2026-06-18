@@ -213,6 +213,12 @@ namespace PersonalityBox.Core
         {
             ResetFighters();
             yield return new WaitForSeconds(0.2f);   // 파이터 리셋 안정화 대기
+
+            // 라운드 시작 종소리 + 경기 BGM 전환
+            SoundManager.Instance?.PlayBell();
+            if (CurrentRound == 1 && SoundManager.Instance != null)
+                SoundManager.Instance.PlayBGM(SoundManager.Instance.fightBGM);
+
             _timer = roundDuration;
             _roundActive = true;
             OnRoundStart?.Invoke(CurrentRound);

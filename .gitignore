@@ -42,3 +42,8 @@ sysinfo.txt
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Unity 자동 생성 (리플렉션 프로브 베이크 / 업그레이드 로그)
+*.exr
+UpgradeLog.htm
+*_BurstDebugInformation_DoNotShip/

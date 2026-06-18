@@ -12,6 +12,7 @@ namespace PersonalityBox.Characters
     [RequireComponent(typeof(Animator))]
     [RequireComponent(typeof(Rigidbody))]
     [RequireComponent(typeof(CapsuleCollider))]
+    [RequireComponent(typeof(AudioSource))]
     public class Fighter : MonoBehaviour
     {
         [Header("Data")]
@@ -25,11 +26,28 @@ namespace PersonalityBox.Characters
         [Header("Movement")]
         public float moveSpeed        = 1.5f;
         public float moveStaminaCost  = 12f;   // 이동 중 초당 스태미너 소모
-        public float rotationSpeed = 15f;  // 상대 방향으로 회전하는 속도
+        public float rotationSpeed    = 15f;   // 상대 방향으로 회전하는 속도
+        public float stepDistance     = 0.7f;  // 한 스텝 이동 거리 (m)
+        public float stepDuration     = 0.15f; // 한 스텝 소요 시간 (초)
 
         [Header("Hit Feel")]
         public float knockbackForce  = 6f;   // 피격 시 뒤로 밀리는 세기
         public Renderer bodyRenderer;        // 히트 플래시 대상 렌더러 (InspectorAssign)
+
+        [Header("Sound – Punch")]
+        public AudioClip[] jabSFX;          // 잽 효과음 (여러 개 → 랜덤 재생)
+        public AudioClip[] hookSFX;         // 훅 효과음
+        public AudioClip[] uppercutSFX;     // 어퍼컷 효과음
+
+        [Header("Sound – React")]
+        public AudioClip[] hitSFX;          // 일반 피격음
+        public AudioClip[] blockHitSFX;     // 가드 상태 피격음 (둔탁한 느낌)
+        public AudioClip[] dodgeSFX;        // 회피 whoosh 음
+        public AudioClip   koSFX;           // KO 음
+        public AudioClip   awakenSFX;       // 각성음
+
+        [Header("Sound – Footstep")]
+        public AudioClip[] footstepSFX;     // 이동 발소리
 
         // ── Public state ─────────────────────────────────────────────────────
         public float CurrentHP      { get; private set; }
@@ -50,9 +68,12 @@ namespace PersonalityBox.Characters
 
         Animator     _anim;
         Rigidbody    _rb;
+        AudioSource  _audio;
         bool         _isBlocking;
         PunchHeight  _blockHeight = PunchHeight.Mid;   // 현재 가드 방향 (상/중/하)
         float        _dodgeCooldownTimer;
+        bool         _isStepping;
+        float        _stepCooldownTimer;
         Coroutine _attackCoroutine;
         Coroutine _hitFlashCoroutine;
         float     _spawnY;          // Y 고정 기준
@@ -77,8 +98,12 @@ namespace PersonalityBox.Characters
         // ── Unity lifecycle ──────────────────────────────────────────────────
         void Awake()
         {
-            _anim = GetComponent<Animator>() ?? GetComponentInChildren<Animator>();
-            _rb   = GetComponent<Rigidbody>();
+            _anim  = GetComponent<Animator>() ?? GetComponentInChildren<Animator>();
+            _rb    = GetComponent<Rigidbody>();
+            _audio = GetComponent<AudioSource>();
+            _audio.spatialBlend = 1f;                          // 3D 포지셔널 사운드
+            _audio.rolloffMode  = AudioRolloffMode.Linear;
+            _audio.maxDistance  = 20f;
             _rb.useGravity             = false;   // Y는 FixedUpdate에서 직접 고정
             _rb.constraints            = RigidbodyConstraints.FreezeRotation;  // Y Position 제약 제거 (이동 방해)
             _rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
@@ -143,6 +168,7 @@ namespace PersonalityBox.Characters
             RegenerateStamina();
             FaceOpponent();
             if (_dodgeCooldownTimer > 0f) _dodgeCooldownTimer -= Time.deltaTime;
+            if (_stepCooldownTimer  > 0f) _stepCooldownTimer  -= Time.deltaTime;
         }
 
         void FixedUpdate()
@@ -189,6 +215,7 @@ namespace PersonalityBox.Characters
         public void Move(float horizontal, float depth)
         {
             if (!CanAct()) return;
+            if (_isStepping) return;   // Step 코루틴 실행 중에는 무시
 
             // 가드/공격 중에는 제자리 (상태 보존)
             if (State == FighterState.Blocking || State == FighterState.Attacking)
@@ -240,6 +267,42 @@ namespace PersonalityBox.Characters
             _anim.SetBool(AnimBlock, false);
         }
 
+        /// 한 번 눌러서 한 스텝 이동 (발소리 포함)
+        public void Step(Vector3 worldDirection)
+        {
+            if (!CanAct()) return;
+            if (_isStepping || _stepCooldownTimer > 0f) return;
+            if (State == FighterState.Blocking || State == FighterState.Attacking ||
+                State == FighterState.Dodging) return;
+
+            _stepCooldownTimer = stepDuration + 0.05f;
+            PlayRandom(footstepSFX);
+            StartCoroutine(StepRoutine(worldDirection.normalized));
+        }
+
+        IEnumerator StepRoutine(Vector3 dir)
+        {
+            _isStepping = true;
+            State = FighterState.Moving;
+            Vector3 velocity = dir * (stepDistance / stepDuration);
+            float elapsed = 0f;
+            _anim.SetFloat(AnimMoveSpeed, 1f);
+
+            while (elapsed < stepDuration)
+            {
+                elapsed += Time.deltaTime;
+                _desiredVelocity = velocity;
+                yield return null;
+            }
+
+            _isStepping      = false;
+            _desiredVelocity = Vector3.zero;
+            _anim.SetFloat(AnimMoveSpeed, 0f);
+            ConsumeStamina(moveStaminaCost * stepDuration);
+            if (State == FighterState.Moving)
+                State = IsAwakened ? FighterState.Awakened : FighterState.Idle;
+        }
+
         public void Dodge(Vector3 worldDirection)
         {
             if (!CanAct() || _dodgeCooldownTimer > 0f) return;
@@ -249,6 +312,7 @@ namespace PersonalityBox.Characters
             _dodgeCooldownTimer = D.dodgeCooldown;
             State = FighterState.Dodging;
             _anim.SetTrigger(AnimDodge);
+            PlayRandom(dodgeSFX);
             StartCoroutine(DodgeRoutine(worldDirection.normalized));
         }
 
@@ -278,6 +342,15 @@ namespace PersonalityBox.Characters
             _anim.SetInteger(AnimAttackHeight, (int)height);
             _anim.SetTrigger(trigger);
 
+            // 펀치 종류별 효과음
+            AudioClip[] clips = type switch {
+                PunchType.Jab      => jabSFX,
+                PunchType.Hook     => hookSFX,
+                PunchType.Uppercut => uppercutSFX,
+                _                  => jabSFX
+            };
+            PlayRandom(clips);
+
             if (_attackCoroutine != null) StopCoroutine(_attackCoroutine);
             _attackCoroutine = StartCoroutine(AttackRoutine(type, height));
         }
@@ -293,6 +366,9 @@ namespace PersonalityBox.Characters
             CurrentHP = Mathf.Max(0f, CurrentHP - reduced);
             OnHealthChanged?.Invoke(CurrentHP, D.maxHealth);
             _anim.SetTrigger(AnimHit);
+
+            // 가드 여부에 따른 피격음
+            PlayRandom(blocked ? blockHitSFX : hitSFX);
 
             // 넉백: 막지 못했을 때만, 수평 방향으로만 (Y 고정)
             if (!blocked && opponentTransform != null)
@@ -322,6 +398,7 @@ namespace PersonalityBox.Characters
             IsAwakened     = false;
             State          = FighterState.Idle;
             _isBlocking    = false;
+            _isStepping    = false;
             _desiredVelocity = Vector3.zero;
             _rb.linearVelocity = Vector3.zero;
             SnapToGround();   // 라운드 시작 위치를 바닥에 맞추고 _spawnY 갱신
@@ -371,6 +448,7 @@ namespace PersonalityBox.Characters
             {
                 IsAwakened = true;
                 _anim.SetTrigger(AnimAwaken);
+                if (awakenSFX != null) _audio.PlayOneShot(awakenSFX);
                 if (D.awakenRestoresStam)
                 {
                     CurrentStamina = D.maxStamina;
@@ -385,7 +463,16 @@ namespace PersonalityBox.Characters
             State = FighterState.KO;
             _rb.linearVelocity = Vector3.zero;
             _anim.SetTrigger(AnimKO);
+            if (koSFX != null) _audio.PlayOneShot(koSFX);
             OnKO?.Invoke();
+        }
+
+        /// 배열에서 랜덤 클립을 재생
+        void PlayRandom(AudioClip[] clips)
+        {
+            if (clips == null || clips.Length == 0 || _audio == null) return;
+            AudioClip clip = clips[UnityEngine.Random.Range(0, clips.Length)];
+            if (clip != null) _audio.PlayOneShot(clip);
         }
 
         float GetPunchDamage(PunchType? type)

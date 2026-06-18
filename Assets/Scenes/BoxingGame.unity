@@ -1116,6 +1116,7 @@ GameObject:
   - component: {fileID: 15544298}
   - component: {fileID: 15544301}
   - component: {fileID: 15544300}
+  - component: {fileID: 15544305}
   m_Layer: 0
   m_Name: Fighter1_Robert
   m_TagString: Untagged
@@ -1142,9 +1143,28 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 1
   moveSpeed: 4
+  moveStaminaCost: 12
   rotationSpeed: 15
+  stepDistance: 0.7
+  stepDuration: 0.15
   knockbackForce: 6
   bodyRenderer: {fileID: 972753726}
+  jabSFX:
+  - {fileID: 8300000, guid: 939c1e511e205d34da711f50a27f909a, type: 3}
+  - {fileID: 8300000, guid: 6f1cc754f3542644cb066686365ddc8b, type: 3}
+  - {fileID: 8300000, guid: 53a0c78c0c198dc4087d019f7624a342, type: 3}
+  hookSFX:
+  - {fileID: 8300000, guid: ef1d70ea8ebbefa4ca93b029304d85ea, type: 3}
+  uppercutSFX:
+  - {fileID: 8300000, guid: 5d667cf50878248458bb118402917990, type: 3}
+  hitSFX:
+  - {fileID: 8300000, guid: 72940100747400a4bb1f9c511a066eaf, type: 3}
+  blockHitSFX:
+  - {fileID: 8300000, guid: 72940100747400a4bb1f9c511a066eaf, type: 3}
+  dodgeSFX: []
+  koSFX: {fileID: 8300000, guid: 350105f9423d50d48a803c97b5faa0c4, type: 3}
+  awakenSFX: {fileID: 0}
+  footstepSFX: []
 --- !u!4 &15544299
 Transform:
   m_ObjectHideFlags: 0
@@ -1272,6 +1292,103 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!82 &15544305
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 15544297}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 0}
+  m_Resource: {fileID: 0}
+  m_PlayOnAwake: 1
+  m_Volume: 1
+  m_Pitch: 1
+  Loop: 0
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1001 &16518116
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -49105,6 +49222,7 @@ GameObject:
   - component: {fileID: 1032871513}
   - component: {fileID: 1032871515}
   - component: {fileID: 1032871514}
+  - component: {fileID: 1032871519}
   m_Layer: 0
   m_Name: Fighter2_Engie
   m_TagString: Untagged
@@ -49149,9 +49267,21 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 1
   moveSpeed: 4
+  moveStaminaCost: 12
   rotationSpeed: 15
+  stepDistance: 0.7
+  stepDuration: 0.15
   knockbackForce: 6
   bodyRenderer: {fileID: 1056907749}
+  jabSFX: []
+  hookSFX: []
+  uppercutSFX: []
+  hitSFX: []
+  blockHitSFX: []
+  dodgeSFX: []
+  koSFX: {fileID: 0}
+  awakenSFX: {fileID: 0}
+  footstepSFX: []
 --- !u!114 &1032871514
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -49263,6 +49393,103 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!82 &1032871519
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1032871511}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 0}
+  m_Resource: {fileID: 0}
+  m_PlayOnAwake: 1
+  m_Volume: 1
+  m_Pitch: 1
+  Loop: 0
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1001 &1033162221
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -64567,16 +64794,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3f64fd3e037e45e48a895dd4ad1e0d8f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PersonalityBox.UI.BoxingHUD
-  fighter1: {fileID: 15544298}
-  fighter2: {fileID: 1032871513}
-  healthBar1: {fileID: 0}
-  staminaBar1: {fileID: 0}
-  nameText1: {fileID: 0}
-  healthBar2: {fileID: 0}
-  staminaBar2: {fileID: 0}
-  nameText2: {fileID: 0}
-  timerText: {fileID: 0}
-  roundText: {fileID: 0}
 --- !u!4 &1342122302
 Transform:
   m_ObjectHideFlags: 0
